@@ -4,7 +4,7 @@
 
 OpenGallery is a lightweight gallery that keeps everything on your device: no ads, no telemetry, no cloud account, no upsell notifications, no API keys. It aims to give every Android phone (8.0 → 16+) the polished gallery experience of a flagship — plus the power features stock galleries never ship.
 
-> Package: `foss.opengallery.app` · License: GPL-3.0 · Status: **in development, pre-1.0**
+> Package: `foss.opengallery.app` · License: GPL-3.0 · Status: **v1.0.2 [released](https://github.com/TonmoyBishwas/foss.opengallery.app/releases)**
 
 ## Why another gallery?
 
