@@ -9,22 +9,11 @@ import androidx.compose.ui.Modifier
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
 
-// Temporary shells; each is replaced by its real implementation in later
-// milestones (M4 Albums, M9 Stories).
-
-@Composable
-fun AlbumsScreen() {
-    HeroPlaceholder("Albums")
-}
+// Stories gets its real implementation in M9.
 
 @Composable
 fun StoriesScreen() {
-    HeroPlaceholder("Stories")
-}
-
-@Composable
-private fun HeroPlaceholder(title: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = title, style = OgType.HeroTitle, color = OgColors.TitleBlue)
+        Text(text = "Stories", style = OgType.HeroTitle, color = OgColors.TitleBlue)
     }
 }

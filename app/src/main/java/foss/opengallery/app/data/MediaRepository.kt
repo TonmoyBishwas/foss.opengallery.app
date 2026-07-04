@@ -49,24 +49,63 @@ class MediaRepository(private val context: Context) {
     }
 
     /** Items of one bucket (folder album). */
-    fun bucketPager(bucketId: Long): Pair<Pager<Int, MediaItem>, () -> Unit> {
+    fun bucketPager(
+        bucketId: Long,
+        sortOrder: String = MediaQuery.SORT_DATE_ADDED_DESC,
+    ): Pair<Pager<Int, MediaItem>, () -> Unit> =
+        selectionPager(
+            selection = "${MediaQuery.MEDIA_TYPE_SELECTION} AND bucket_id = ?",
+            selectionArgs = arrayOf(bucketId.toString()),
+            sortOrder = sortOrder,
+        )
+
+    /** Arbitrary-selection pager (virtual albums: videos, favourites, ...). */
+    fun selectionPager(
+        selection: String,
+        selectionArgs: Array<String>? = null,
+        sortOrder: String = MediaQuery.SORT_DATE_ADDED_DESC,
+    ): Pair<Pager<Int, MediaItem>, () -> Unit> {
         var current: MediaPagingSource? = null
-        val selection = "${MediaQuery.MEDIA_TYPE_SELECTION} AND bucket_id = ?"
         val pager = Pager(
             config = PagingConfig(pageSize = 120, initialLoadSize = 240, enablePlaceholders = false)
         ) {
             MediaPagingSource(
                 resolver,
                 selection = selection,
-                selectionArgs = arrayOf(bucketId.toString()),
+                selectionArgs = selectionArgs,
+                sortOrder = sortOrder,
             ).also { current = it }
         }
         return pager to { current?.invalidate() }
     }
 
+    suspend fun countFor(selection: String, args: Array<String>? = null): Pair<Int, Int> =
+        withContext(Dispatchers.IO) {
+            val images = MediaQuery.count(
+                resolver,
+                "($selection) AND ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = " +
+                    "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE}",
+                args,
+            )
+            val videos = MediaQuery.count(
+                resolver,
+                "($selection) AND ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = " +
+                    "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO}",
+                args,
+            )
+            images to videos
+        }
+
     suspend fun buckets(): List<Bucket> = withContext(Dispatchers.IO) {
         MediaQuery.queryBuckets(resolver)
     }
+
+    /** Newest item matching a selection — used for album covers. */
+    suspend fun firstItemFor(selection: String, args: Array<String>? = null): MediaItem? =
+        withContext(Dispatchers.IO) {
+            MediaQuery.queryPage(resolver, offset = 0, limit = 1, selection = selection, selectionArgs = args)
+                .firstOrNull()
+        }
 
     suspend fun totalCount(): Int = withContext(Dispatchers.IO) {
         MediaQuery.count(resolver)

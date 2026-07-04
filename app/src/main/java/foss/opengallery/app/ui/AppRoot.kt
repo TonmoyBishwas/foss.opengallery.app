@@ -12,19 +12,72 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import foss.opengallery.app.ui.components.MainTab
 import foss.opengallery.app.ui.components.OneUiBottomTabs
-import foss.opengallery.app.ui.screens.AlbumsScreen
 import foss.opengallery.app.ui.screens.StoriesScreen
+import foss.opengallery.app.ui.screens.albums.AlbumDetailScreen
+import foss.opengallery.app.ui.screens.albums.AlbumsScreen
+import foss.opengallery.app.ui.screens.albums.AllAlbumsScreen
+import foss.opengallery.app.ui.screens.albums.HideAlbumsScreen
 import foss.opengallery.app.ui.screens.pictures.PicturesScreen
 import foss.opengallery.app.ui.theme.OgColors
 
-/**
- * App shell: the three main tabs plus the drawer sheet, mirroring the
- * reference design's Pictures · Albums · Stories · ☰ bottom bar.
- */
+/** App shell: NavHost + the Pictures · Albums · Stories · ☰ tab bar. */
 @Composable
 fun AppRoot() {
+    val nav = rememberNavController()
+
+    NavHost(
+        navController = nav,
+        startDestination = Routes.HOME,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(OgColors.Background),
+    ) {
+        composable(Routes.HOME) {
+            HomeTabs(
+                onNavigate = { route -> nav.navigate(route) },
+            )
+        }
+        composable(Routes.ALL_ALBUMS) {
+            AllAlbumsScreen(
+                onBack = { nav.popBackStack() },
+                onNavigate = { route -> nav.navigate(route) },
+            )
+        }
+        composable("hideAlbums") {
+            HideAlbumsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(
+            route = Routes.ALBUM,
+            arguments = listOf(
+                navArgument("type") { type = NavType.StringType },
+                navArgument("id") { type = NavType.StringType },
+                navArgument("title") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+            ),
+        ) { backStackEntry ->
+            val args = backStackEntry.arguments
+            AlbumDetailScreen(
+                type = args?.getString("type") ?: "bucket",
+                id = args?.getString("id") ?: "0",
+                title = args?.getString("title") ?: "",
+                onBack = { nav.popBackStack() },
+                onOpenItem = { /* viewer arrives in M5 */ },
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeTabs(onNavigate: (String) -> Unit) {
     var currentTab by rememberSaveable { mutableStateOf(MainTab.Pictures) }
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
     var selectionActive by rememberSaveable { mutableStateOf(false) }
@@ -39,7 +92,9 @@ fun AppRoot() {
                 MainTab.Pictures -> PicturesScreen(
                     onSelectionModeChange = { selectionActive = it },
                 )
-                MainTab.Albums -> AlbumsScreen()
+                MainTab.Albums -> AlbumsScreen(
+                    onNavigate = onNavigate,
+                )
                 MainTab.Stories -> StoriesScreen()
             }
         }
@@ -56,6 +111,12 @@ fun AppRoot() {
     }
 
     if (drawerOpen) {
-        DrawerSheet(onDismiss = { drawerOpen = false })
+        DrawerSheet(
+            onDismiss = { drawerOpen = false },
+            onNavigate = { route ->
+                drawerOpen = false
+                onNavigate(route)
+            },
+        )
     }
 }
