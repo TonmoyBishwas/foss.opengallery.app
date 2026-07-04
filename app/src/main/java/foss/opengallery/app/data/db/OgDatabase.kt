@@ -3,8 +3,8 @@ package foss.opengallery.app.data.db
 import android.content.Context
 import androidx.room.Dao
 import androidx.room.Database
-import androidx.room.Delete
 import androidx.room.Entity
+import androidx.room.Fts4
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
@@ -76,6 +76,97 @@ data class LockedItemEntity(
     /** Encrypted blob file name inside filesDir/locked. */
     val fileName: String,
 )
+
+/** Per-photo on-device intelligence index (OCR text + labels). */
+@Entity(tableName = "media_index")
+data class MediaIndexEntity(
+    @PrimaryKey val mediaId: Long,
+    val ocrText: String,
+    val labels: String,
+    val faceCount: Int,
+    val indexedAtMillis: Long,
+)
+
+/** FTS mirror of [MediaIndexEntity] for fast free-text search. */
+@Fts4(contentEntity = MediaIndexEntity::class)
+@Entity(tableName = "media_index_fts")
+data class MediaIndexFtsEntity(
+    val ocrText: String,
+    val labels: String,
+)
+
+/** One detected face: its embedding and the person cluster it belongs to. */
+@Entity(tableName = "face")
+data class FaceEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val mediaId: Long,
+    /** 192 floats, little-endian bytes. */
+    val embedding: ByteArray,
+    val personId: Long?,
+)
+
+/** A person cluster; user-nameable. */
+@Entity(tableName = "person")
+data class PersonEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String?,
+    val coverMediaId: Long,
+    /** Cluster centroid, same encoding as FaceEntity.embedding. */
+    val centroid: ByteArray,
+    val faceCount: Int,
+)
+
+@Dao
+interface IndexDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(index: MediaIndexEntity)
+
+    @Query("SELECT mediaId FROM media_index")
+    suspend fun indexedIds(): List<Long>
+
+    @Query(
+        "SELECT media_index.mediaId FROM media_index JOIN media_index_fts " +
+            "ON media_index.rowid = media_index_fts.rowid " +
+            "WHERE media_index_fts MATCH :query"
+    )
+    suspend fun search(query: String): List<Long>
+
+    @Query("SELECT COUNT(*) FROM media_index")
+    fun observeIndexedCount(): Flow<Int>
+
+    @Query("SELECT mediaId FROM media_index WHERE ocrText != ''")
+    suspend fun idsWithText(): List<Long>
+}
+
+@Dao
+interface FaceDao {
+    @Insert
+    suspend fun insert(face: FaceEntity): Long
+
+    @Query("SELECT * FROM face WHERE personId IS NULL")
+    suspend fun unassigned(): List<FaceEntity>
+
+    @Query("UPDATE face SET personId = :personId WHERE id = :faceId")
+    suspend fun assign(faceId: Long, personId: Long)
+
+    @Query("SELECT * FROM person ORDER BY faceCount DESC")
+    fun observePeople(): Flow<List<PersonEntity>>
+
+    @Query("SELECT * FROM person")
+    suspend fun people(): List<PersonEntity>
+
+    @Insert
+    suspend fun insertPerson(person: PersonEntity): Long
+
+    @Query("UPDATE person SET centroid = :centroid, faceCount = :faceCount WHERE id = :id")
+    suspend fun updatePerson(id: Long, centroid: ByteArray, faceCount: Int)
+
+    @Query("UPDATE person SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    @Query("SELECT DISTINCT mediaId FROM face WHERE personId = :personId")
+    suspend fun mediaIdsForPerson(personId: Long): List<Long>
+}
 
 @Dao
 interface TrashDao {
@@ -166,8 +257,12 @@ interface CustomAlbumDao {
         TrashedItemEntity::class,
         FavoriteItemEntity::class,
         LockedItemEntity::class,
+        MediaIndexEntity::class,
+        MediaIndexFtsEntity::class,
+        FaceEntity::class,
+        PersonEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class OgDatabase : RoomDatabase() {
@@ -176,6 +271,8 @@ abstract class OgDatabase : RoomDatabase() {
     abstract fun trashDao(): TrashDao
     abstract fun favoriteDao(): FavoriteDao
     abstract fun lockedDao(): LockedDao
+    abstract fun indexDao(): IndexDao
+    abstract fun faceDao(): FaceDao
 
     companion object {
         fun build(context: Context): OgDatabase =

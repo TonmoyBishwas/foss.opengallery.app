@@ -58,6 +58,10 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        // The TFLite model must not be compressed or mmap fails.
+        noCompress += "tflite"
+    }
 }
 
 dependencies {
@@ -85,6 +89,12 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.print)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.mlkit.image.labeling)
+    implementation(libs.mlkit.face.detection)
+    implementation(libs.tensorflow.lite)
+    implementation(libs.kotlinx.coroutines.play.services)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.compose.ui.tooling.preview)
 }

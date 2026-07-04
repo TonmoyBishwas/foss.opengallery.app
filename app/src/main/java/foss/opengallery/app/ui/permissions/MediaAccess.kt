@@ -99,6 +99,11 @@ fun MediaAccessGate(content: @Composable (MediaAccess) -> Unit) {
     }
 
     if (access != MediaAccess.Denied) {
+        // Media is readable: make sure background indexing is scheduled.
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            foss.opengallery.app.data.index.IndexWorker.schedule(context)
+            foss.opengallery.app.data.index.IndexWorker.runNow(context)
+        }
         content(access)
     } else {
         Column(

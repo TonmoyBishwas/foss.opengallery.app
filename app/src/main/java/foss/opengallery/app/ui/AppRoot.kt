@@ -63,6 +63,27 @@ fun AppRoot() {
                 onBack = { nav.popBackStack() },
             )
         }
+        composable("search") {
+            foss.opengallery.app.ui.screens.search.SearchScreen(
+                onBack = { nav.popBackStack() },
+                onNavigate = { route -> nav.navigate(route) },
+                onOpenItem = { item ->
+                    nav.navigate(Routes.viewer("virtual", "recent", item.id))
+                },
+            )
+        }
+        composable(
+            route = "person/{personId}",
+            arguments = listOf(navArgument("personId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            foss.opengallery.app.ui.screens.search.PersonScreen(
+                personId = backStackEntry.arguments?.getLong("personId") ?: 0L,
+                onBack = { nav.popBackStack() },
+                onOpenItem = { item ->
+                    nav.navigate(Routes.viewer("virtual", "recent", item.id))
+                },
+            )
+        }
         composable(
             route = Routes.EDITOR,
             arguments = listOf(navArgument("mediaId") { type = NavType.LongType }),
@@ -138,6 +159,7 @@ private fun HomeTabs(onNavigate: (String) -> Unit) {
                     onOpenItem = { item ->
                         onNavigate(Routes.viewer("virtual", "recent", item.id))
                     },
+                    onOpenSearch = { onNavigate("search") },
                     onSelectionModeChange = { selectionActive = it },
                 )
                 MainTab.Albums -> AlbumsScreen(

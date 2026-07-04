@@ -55,6 +55,7 @@ fun AlbumsScreen(
                 onAction = { action ->
                     when (action) {
                         HeaderAction.Plus -> createOpen = true
+                        HeaderAction.Search -> onNavigate("search")
                         HeaderAction.More -> menuOpen = true
                         else -> {}
                     }
