@@ -17,4 +17,10 @@ class AppContainer(context: Context) {
     val albumsRepository: AlbumsRepository by lazy {
         AlbumsRepository(mediaRepository, database)
     }
+    val trashRepository: foss.opengallery.app.data.trash.TrashRepository by lazy {
+        foss.opengallery.app.data.trash.TrashRepository(appContext, database)
+    }
+    val lockedStore: foss.opengallery.app.data.locked.LockedStore by lazy {
+        foss.opengallery.app.data.locked.LockedStore(appContext, database)
+    }
 }

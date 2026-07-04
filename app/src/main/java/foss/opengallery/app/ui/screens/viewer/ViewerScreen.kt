@@ -171,6 +171,34 @@ fun ViewerScreen(
                         add(PopupEntry("Set as wallpaper") {
                             currentItem?.let { setAsWallpaper(context, it) }
                         })
+                        add(PopupEntry("Move to Locked folder") {
+                            val item = currentItem ?: return@PopupEntry
+                            scope.launch {
+                                val container =
+                                    (context.applicationContext as foss.opengallery.app.OpenGalleryApp)
+                                        .container
+                                container.lockedStore.add(
+                                    source = item.uri,
+                                    displayName = item.displayName,
+                                    mimeType = item.mimeType,
+                                    sizeBytes = item.sizeBytes,
+                                    nowMillis = System.currentTimeMillis(),
+                                )
+                                // Remove the now-vaulted original from the gallery.
+                                if (MediaActions.canUseSystemTrash()) {
+                                    deleteLauncher.launch(
+                                        IntentSenderRequest.Builder(
+                                            MediaActions.deleteRequest(
+                                                context.contentResolver, listOf(item.uri)
+                                            ).intentSender
+                                        ).build()
+                                    )
+                                } else {
+                                    MediaActions.deleteDirect(context, listOf(item.uri))
+                                    vm.onDeleted(item.id)
+                                }
+                            }
+                        })
                         add(PopupEntry("Print") {
                             currentItem?.let { printImage(context, it) }
                         })

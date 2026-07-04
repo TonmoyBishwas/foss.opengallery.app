@@ -53,6 +53,16 @@ fun AppRoot() {
         composable("hideAlbums") {
             HideAlbumsScreen(onBack = { nav.popBackStack() })
         }
+        composable("recycleBin") {
+            foss.opengallery.app.ui.screens.recycle.RecycleBinScreen(
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable("lockedFolder") {
+            foss.opengallery.app.ui.screens.locked.LockedFolderScreen(
+                onBack = { nav.popBackStack() },
+            )
+        }
         composable(
             route = Routes.VIEWER,
             arguments = listOf(

@@ -46,6 +46,79 @@ data class CustomAlbumItemEntity(
     val addedAtMillis: Long,
 )
 
+/** Pre-Android-11 fallback trash record (file moved into app storage). */
+@Entity(tableName = "trashed_item")
+data class TrashedItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val originalName: String,
+    val originalRelativePath: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val trashedAtMillis: Long,
+    /** Absolute path of the moved file inside the app's trash dir. */
+    val storedPath: String,
+)
+
+/** Pre-Android-11 fallback favourite flag. */
+@Entity(tableName = "favorite_item")
+data class FavoriteItemEntity(
+    @PrimaryKey val mediaId: Long,
+)
+
+/** One encrypted item in the Locked Folder. */
+@Entity(tableName = "locked_item")
+data class LockedItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val displayName: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val addedAtMillis: Long,
+    /** Encrypted blob file name inside filesDir/locked. */
+    val fileName: String,
+)
+
+@Dao
+interface TrashDao {
+    @Query("SELECT * FROM trashed_item ORDER BY trashedAtMillis DESC")
+    fun observeAll(): Flow<List<TrashedItemEntity>>
+
+    @Insert
+    suspend fun insert(item: TrashedItemEntity): Long
+
+    @Query("DELETE FROM trashed_item WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("SELECT * FROM trashed_item WHERE trashedAtMillis < :cutoff")
+    suspend fun olderThan(cutoff: Long): List<TrashedItemEntity>
+}
+
+@Dao
+interface FavoriteDao {
+    @Query("SELECT mediaId FROM favorite_item")
+    fun observeIds(): Flow<List<Long>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun add(item: FavoriteItemEntity)
+
+    @Query("DELETE FROM favorite_item WHERE mediaId = :mediaId")
+    suspend fun remove(mediaId: Long)
+}
+
+@Dao
+interface LockedDao {
+    @Query("SELECT * FROM locked_item ORDER BY addedAtMillis DESC")
+    fun observeAll(): Flow<List<LockedItemEntity>>
+
+    @Insert
+    suspend fun insert(item: LockedItemEntity): Long
+
+    @Query("SELECT * FROM locked_item WHERE id = :id")
+    suspend fun get(id: Long): LockedItemEntity?
+
+    @Query("DELETE FROM locked_item WHERE id = :id")
+    suspend fun delete(id: Long)
+}
+
 @Dao
 interface AlbumMetaDao {
     @Query("SELECT * FROM album_meta")
@@ -90,13 +163,19 @@ interface CustomAlbumDao {
         AlbumMetaEntity::class,
         CustomAlbumEntity::class,
         CustomAlbumItemEntity::class,
+        TrashedItemEntity::class,
+        FavoriteItemEntity::class,
+        LockedItemEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class OgDatabase : RoomDatabase() {
     abstract fun albumMetaDao(): AlbumMetaDao
     abstract fun customAlbumDao(): CustomAlbumDao
+    abstract fun trashDao(): TrashDao
+    abstract fun favoriteDao(): FavoriteDao
+    abstract fun lockedDao(): LockedDao
 
     companion object {
         fun build(context: Context): OgDatabase =

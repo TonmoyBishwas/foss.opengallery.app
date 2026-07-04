@@ -41,9 +41,9 @@ fun DrawerSheet(
         ),
         listOf(
             DrawerItem("Locations", null),
-            DrawerItem("Recycle bin", null),
+            DrawerItem("Recycle bin", "recycleBin"),
             DrawerItem("Settings", null),
-            DrawerItem("Locked folder", null),
+            DrawerItem("Locked folder", "lockedFolder"),
         ),
     )
 
