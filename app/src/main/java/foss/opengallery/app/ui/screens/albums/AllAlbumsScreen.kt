@@ -75,7 +75,8 @@ fun AllAlbumsScreen(
                 }
             },
         )
-        Box {
+        // Anchor at the right edge so the menu drops under the ⋮ button.
+        Box(Modifier.align(Alignment.End).padding(end = 8.dp)) {
             OneUiPopupMenu(
                 expanded = menuOpen,
                 onDismiss = { menuOpen = false },

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
@@ -142,7 +143,12 @@ fun StoriesScreen(onOpenStory: (Story) -> Unit) {
     val allStories by vm.stories.collectAsState()
     val stories = if (settings.autoCreateStories) allStories else emptyList()
 
-    LazyColumn(Modifier.fillMaxSize().background(OgColors.Background)) {
+    LazyColumn(
+        Modifier
+            .fillMaxSize()
+            .background(OgColors.Background)
+            .statusBarsPadding()
+    ) {
         item {
             Text(
                 "Explore your stories",
