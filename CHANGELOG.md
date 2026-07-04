@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2] — 2026-07-04
+
+### Fixed
+- Stories: "Explore your stories" no longer renders under the status bar
+- Album, Recycle bin and All albums overflow menus now open anchored at
+  the top right, under the ⋮ button, instead of the left edge
+
 ## [1.0.1] — 2026-07-04
 
 UI polish release based on first-device feedback.
