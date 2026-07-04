@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.mlkit.face.detection)
     implementation(libs.tensorflow.lite)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.osmdroid)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.compose.ui.tooling.preview)
 }

@@ -37,10 +37,10 @@ fun DrawerSheet(
             DrawerItem("Videos", Routes.virtualAlbum("videos", "Videos")),
             DrawerItem("Favourites", Routes.virtualAlbum("favourites", "Favourites")),
             DrawerItem("Recent", Routes.virtualAlbum("recent", "Recent")),
-            DrawerItem("Suggestions", null),
+            DrawerItem("Suggestions", "suggestions"),
         ),
         listOf(
-            DrawerItem("Locations", null),
+            DrawerItem("Locations", "locations"),
             DrawerItem("Recycle bin", "recycleBin"),
             DrawerItem("Settings", null),
             DrawerItem("Locked folder", "lockedFolder"),

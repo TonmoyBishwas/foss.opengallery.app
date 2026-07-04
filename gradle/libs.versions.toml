@@ -49,6 +49,7 @@ mlkit-image-labeling = { group = "com.google.android.gms", name = "play-services
 mlkit-face-detection = { group = "com.google.android.gms", name = "play-services-mlkit-face-detection", version = "17.1.0" }
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tflite" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version = "1.10.2" }
+osmdroid = { group = "org.osmdroid", name = "osmdroid-android", version = "6.1.20" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

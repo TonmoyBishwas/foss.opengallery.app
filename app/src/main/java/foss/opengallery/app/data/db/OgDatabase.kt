@@ -77,7 +77,7 @@ data class LockedItemEntity(
     val fileName: String,
 )
 
-/** Per-photo on-device intelligence index (OCR text + labels). */
+/** Per-photo on-device intelligence index (OCR text + labels + location). */
 @Entity(tableName = "media_index")
 data class MediaIndexEntity(
     @PrimaryKey val mediaId: Long,
@@ -85,6 +85,10 @@ data class MediaIndexEntity(
     val labels: String,
     val faceCount: Int,
     val indexedAtMillis: Long,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val city: String? = null,
+    val country: String? = null,
 )
 
 /** FTS mirror of [MediaIndexEntity] for fast free-text search. */
@@ -136,6 +140,12 @@ interface IndexDao {
 
     @Query("SELECT mediaId FROM media_index WHERE ocrText != ''")
     suspend fun idsWithText(): List<Long>
+
+    @Query("SELECT * FROM media_index WHERE latitude IS NOT NULL")
+    suspend fun geotagged(): List<MediaIndexEntity>
+
+    @Query("SELECT mediaId FROM media_index WHERE city = :city")
+    suspend fun idsForCity(city: String): List<Long>
 }
 
 @Dao
@@ -262,7 +272,7 @@ interface CustomAlbumDao {
         FaceEntity::class,
         PersonEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class OgDatabase : RoomDatabase() {

@@ -131,6 +131,9 @@ class IndexWorker(
             }
         }
 
+        val gps = readGps(item)
+        val place = gps?.let { geocode(it.first, it.second) }
+
         db.indexDao().upsert(
             MediaIndexEntity(
                 mediaId = item.id,
@@ -138,9 +141,37 @@ class IndexWorker(
                 labels = labels,
                 faceCount = faceCount,
                 indexedAtMillis = System.currentTimeMillis(),
+                latitude = gps?.first,
+                longitude = gps?.second,
+                city = place?.first,
+                country = place?.second,
             )
         )
     }
+
+    /** EXIF GPS; unredacted only when ACCESS_MEDIA_LOCATION is granted. */
+    private fun readGps(item: MediaItem): Pair<Double, Double>? = runCatching {
+        val resolver = applicationContext.contentResolver
+        val uri = if (
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                applicationContext, android.Manifest.permission.ACCESS_MEDIA_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            android.os.Build.VERSION.SDK_INT >= 29
+        ) android.provider.MediaStore.setRequireOriginal(item.uri) else item.uri
+        resolver.openInputStream(uri)?.use { stream ->
+            androidx.exifinterface.media.ExifInterface(stream).latLong
+        }?.let { it[0] to it[1] }
+    }.getOrNull()
+
+    /** Best-effort reverse geocode (city, country); null offline. */
+    private fun geocode(lat: Double, lon: Double): Pair<String?, String?>? = runCatching {
+        @Suppress("DEPRECATION")
+        val addresses = android.location.Geocoder(applicationContext)
+            .getFromLocation(lat, lon, 1)
+        addresses?.firstOrNull()?.let { address ->
+            (address.locality ?: address.subAdminArea) to address.countryName
+        }
+    }.getOrNull()
 
     /** Greedy incremental clustering by cosine similarity to centroids. */
     private suspend fun clusterFaces(db: foss.opengallery.app.data.db.OgDatabase) {

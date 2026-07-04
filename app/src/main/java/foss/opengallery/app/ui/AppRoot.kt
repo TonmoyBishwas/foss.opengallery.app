@@ -19,7 +19,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import foss.opengallery.app.ui.components.MainTab
 import foss.opengallery.app.ui.components.OneUiBottomTabs
-import foss.opengallery.app.ui.screens.StoriesScreen
 import foss.opengallery.app.ui.screens.albums.AlbumDetailScreen
 import foss.opengallery.app.ui.screens.albums.AlbumsScreen
 import foss.opengallery.app.ui.screens.albums.AllAlbumsScreen
@@ -70,6 +69,45 @@ fun AppRoot() {
                 onOpenItem = { item ->
                     nav.navigate(Routes.viewer("virtual", "recent", item.id))
                 },
+            )
+        }
+        composable("suggestions") {
+            foss.opengallery.app.ui.screens.suggestions.SuggestionsScreen(
+                onBack = { nav.popBackStack() },
+                onOpenItem = { item ->
+                    nav.navigate(Routes.viewer("virtual", "recent", item.id))
+                },
+            )
+        }
+        composable("locations") {
+            foss.opengallery.app.ui.screens.locations.LocationsScreen(
+                onBack = { nav.popBackStack() },
+                onOpenCity = { city -> nav.navigate("city/$city") },
+            )
+        }
+        composable(
+            route = "city/{city}",
+            arguments = listOf(navArgument("city") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            foss.opengallery.app.ui.screens.locations.CityScreen(
+                city = backStackEntry.arguments?.getString("city") ?: "",
+                onBack = { nav.popBackStack() },
+                onOpenItem = { item ->
+                    nav.navigate(Routes.viewer("virtual", "recent", item.id))
+                },
+            )
+        }
+        composable(
+            route = "story/{ids}",
+            arguments = listOf(navArgument("ids") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val ids = backStackEntry.arguments?.getString("ids")
+                ?.split(',')
+                ?.mapNotNull(String::toLongOrNull)
+                ?: emptyList()
+            foss.opengallery.app.ui.screens.stories.StoryViewerScreen(
+                itemIds = ids,
+                onClose = { nav.popBackStack() },
             )
         }
         composable(
@@ -165,7 +203,11 @@ private fun HomeTabs(onNavigate: (String) -> Unit) {
                 MainTab.Albums -> AlbumsScreen(
                     onNavigate = onNavigate,
                 )
-                MainTab.Stories -> StoriesScreen()
+                MainTab.Stories -> foss.opengallery.app.ui.screens.stories.StoriesScreen(
+                    onOpenStory = { story ->
+                        onNavigate("story/${story.itemIds.joinToString(",")}")
+                    },
+                )
             }
         }
         if (!selectionActive) {

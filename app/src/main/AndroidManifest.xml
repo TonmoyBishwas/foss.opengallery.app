@@ -11,6 +11,10 @@
         android:maxSdkVersion="32" />
     <!-- Unredacted EXIF GPS for the Locations features (runtime-requested, optional) -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <!-- Only used for OpenStreetMap tiles and reverse geocoding; the app has
+         no analytics, no ads, and never uploads user content. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".OpenGalleryApp"
