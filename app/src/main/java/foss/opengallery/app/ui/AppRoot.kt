@@ -54,6 +54,27 @@ fun AppRoot() {
             HideAlbumsScreen(onBack = { nav.popBackStack() })
         }
         composable(
+            route = Routes.VIEWER,
+            arguments = listOf(
+                navArgument("type") { type = NavType.StringType },
+                navArgument("id") { type = NavType.StringType },
+                navArgument("mediaId") { type = NavType.LongType },
+                navArgument("sort") {
+                    type = NavType.IntType
+                    defaultValue = 0
+                },
+            ),
+        ) { backStackEntry ->
+            val args = backStackEntry.arguments
+            foss.opengallery.app.ui.screens.viewer.ViewerScreen(
+                type = args?.getString("type") ?: "virtual",
+                id = args?.getString("id") ?: "recent",
+                startMediaId = args?.getLong("mediaId") ?: 0L,
+                sortEncoded = args?.getInt("sort") ?: 0,
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(
             route = Routes.ALBUM,
             arguments = listOf(
                 navArgument("type") { type = NavType.StringType },
@@ -65,12 +86,16 @@ fun AppRoot() {
             ),
         ) { backStackEntry ->
             val args = backStackEntry.arguments
+            val albumType = args?.getString("type") ?: "bucket"
+            val albumId = args?.getString("id") ?: "0"
             AlbumDetailScreen(
-                type = args?.getString("type") ?: "bucket",
-                id = args?.getString("id") ?: "0",
+                type = albumType,
+                id = albumId,
                 title = args?.getString("title") ?: "",
                 onBack = { nav.popBackStack() },
-                onOpenItem = { /* viewer arrives in M5 */ },
+                onOpenItem = { item ->
+                    nav.navigate(Routes.viewer(albumType, albumId, item.id))
+                },
             )
         }
     }
@@ -90,6 +115,9 @@ private fun HomeTabs(onNavigate: (String) -> Unit) {
         Box(Modifier.weight(1f)) {
             when (currentTab) {
                 MainTab.Pictures -> PicturesScreen(
+                    onOpenItem = { item ->
+                        onNavigate(Routes.viewer("virtual", "recent", item.id))
+                    },
                     onSelectionModeChange = { selectionActive = it },
                 )
                 MainTab.Albums -> AlbumsScreen(

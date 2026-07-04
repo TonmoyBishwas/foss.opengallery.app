@@ -16,4 +16,9 @@ object Routes {
     fun bucketAlbum(bucketId: Long, title: String) = album("bucket", bucketId.toString(), title)
     fun virtualAlbum(key: String, title: String) = album("virtual", key, title)
     fun customAlbum(id: Long, title: String) = album("custom", id.toString(), title)
+
+    const val VIEWER = "viewer/{type}/{id}/{mediaId}?sort={sort}"
+
+    fun viewer(type: String, id: String, mediaId: Long, sortEncoded: Int = 0): String =
+        "viewer/$type/$id/$mediaId?sort=$sortEncoded"
 }
