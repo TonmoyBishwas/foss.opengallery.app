@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gallery</string>
+
+    <!-- Bottom navigation -->
+    <string name="tab_pictures">Pictures</string>
+    <string name="tab_albums">Albums</string>
+    <string name="tab_stories">Stories</string>
+    <string name="tab_menu">Menu</string>
+</resources>

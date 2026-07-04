@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+app/build/
+**/build/
+
+# Local configuration (SDK path, JDK path)
+local.properties
+
+# Signing — never commit keystores or their passwords
+*.jks
+*.keystore
+keystore.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# OS
+Thumbs.db
+.DS_Store

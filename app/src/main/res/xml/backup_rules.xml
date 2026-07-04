@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Locked Folder content must never leave the device via cloud backup. -->
+<full-backup-content>
+    <exclude domain="file" path="locked" />
+    <exclude domain="database" path="locked.db" />
+</full-backup-content>
