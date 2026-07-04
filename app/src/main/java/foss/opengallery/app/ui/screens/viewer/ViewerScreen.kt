@@ -74,6 +74,7 @@ fun ViewerScreen(
     startMediaId: Long,
     sortEncoded: Int,
     onBack: () -> Unit,
+    onEdit: (Long) -> Unit = {},
 ) {
     val context = LocalContext.current
     val vm = ogViewModel(key = "viewer:$type:$id:$startMediaId") { c ->
@@ -265,9 +266,15 @@ fun ViewerScreen(
                         )
                     }
                     ViewerAction("Edit") {
-                        currentItem?.let {
-                            runCatching {
-                                context.startActivity(MediaActions.editIntent(it.uri, it.mimeType))
+                        currentItem?.let { item ->
+                            if (item.isVideo) {
+                                runCatching {
+                                    context.startActivity(
+                                        MediaActions.editIntent(item.uri, item.mimeType)
+                                    )
+                                }
+                            } else {
+                                onEdit(item.id)
                             }
                         }
                     }

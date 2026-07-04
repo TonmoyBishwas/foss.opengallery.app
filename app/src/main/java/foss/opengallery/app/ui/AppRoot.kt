@@ -64,6 +64,15 @@ fun AppRoot() {
             )
         }
         composable(
+            route = Routes.EDITOR,
+            arguments = listOf(navArgument("mediaId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            foss.opengallery.app.ui.screens.editor.EditorScreen(
+                mediaId = backStackEntry.arguments?.getLong("mediaId") ?: 0L,
+                onClose = { nav.popBackStack() },
+            )
+        }
+        composable(
             route = Routes.VIEWER,
             arguments = listOf(
                 navArgument("type") { type = NavType.StringType },
@@ -82,6 +91,7 @@ fun AppRoot() {
                 startMediaId = args?.getLong("mediaId") ?: 0L,
                 sortEncoded = args?.getInt("sort") ?: 0,
                 onBack = { nav.popBackStack() },
+                onEdit = { mediaId -> nav.navigate(Routes.editor(mediaId)) },
             )
         }
         composable(

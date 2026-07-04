@@ -21,4 +21,8 @@ object Routes {
 
     fun viewer(type: String, id: String, mediaId: Long, sortEncoded: Int = 0): String =
         "viewer/$type/$id/$mediaId?sort=$sortEncoded"
+
+    const val EDITOR = "editor/{mediaId}"
+
+    fun editor(mediaId: Long): String = "editor/$mediaId"
 }
