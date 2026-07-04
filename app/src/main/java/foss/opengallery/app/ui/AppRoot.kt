@@ -27,6 +27,7 @@ import foss.opengallery.app.ui.theme.OgColors
 fun AppRoot() {
     var currentTab by rememberSaveable { mutableStateOf(MainTab.Pictures) }
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
+    var selectionActive by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -35,19 +36,23 @@ fun AppRoot() {
     ) {
         Box(Modifier.weight(1f)) {
             when (currentTab) {
-                MainTab.Pictures -> PicturesScreen()
+                MainTab.Pictures -> PicturesScreen(
+                    onSelectionModeChange = { selectionActive = it },
+                )
                 MainTab.Albums -> AlbumsScreen()
                 MainTab.Stories -> StoriesScreen()
             }
         }
-        OneUiBottomTabs(
-            current = currentTab,
-            onSelect = { currentTab = it },
-            onMenuClick = { drawerOpen = true },
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding(),
-        )
+        if (!selectionActive) {
+            OneUiBottomTabs(
+                current = currentTab,
+                onSelect = { currentTab = it },
+                onMenuClick = { drawerOpen = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+            )
+        }
     }
 
     if (drawerOpen) {

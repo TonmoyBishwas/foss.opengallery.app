@@ -137,7 +137,18 @@ object MediaQuery {
         fun read(): MediaItem {
             val itemId = c.getLong(id)
             val mimeType = c.getString(mime) ?: "application/octet-stream"
-            val contentUri = ContentUris.withAppendedId(filesUri, itemId)
+            // Typed item URI (image/video collection) — required by the
+            // createTrashRequest/createFavoriteRequest/share APIs.
+            val collection = if (mimeType.startsWith("video/")) {
+                if (Build.VERSION.SDK_INT >= 29)
+                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            } else {
+                if (Build.VERSION.SDK_INT >= 29)
+                    MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
+            val contentUri = ContentUris.withAppendedId(collection, itemId)
             val addedSec = c.getLong(dateAdded)
             val takenMs = if (dateTaken >= 0 && !c.isNull(dateTaken)) c.getLong(dateTaken) else 0L
             val relativePath = when {
