@@ -23,4 +23,7 @@ class AppContainer(context: Context) {
     val lockedStore: foss.opengallery.app.data.locked.LockedStore by lazy {
         foss.opengallery.app.data.locked.LockedStore(appContext, database)
     }
+    val settingsRepository: foss.opengallery.app.data.settings.SettingsRepository by lazy {
+        foss.opengallery.app.data.settings.SettingsRepository(appContext)
+    }
 }

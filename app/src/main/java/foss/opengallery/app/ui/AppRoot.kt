@@ -71,6 +71,11 @@ fun AppRoot() {
                 },
             )
         }
+        composable("settings") {
+            foss.opengallery.app.ui.screens.settings.SettingsScreen(
+                onBack = { nav.popBackStack() },
+            )
+        }
         composable("suggestions") {
             foss.opengallery.app.ui.screens.suggestions.SuggestionsScreen(
                 onBack = { nav.popBackStack() },

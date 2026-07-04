@@ -132,10 +132,15 @@ class StoriesViewModel(
 @Composable
 fun StoriesScreen(onOpenStory: (Story) -> Unit) {
     val context = LocalContext.current
+    val container = (context.applicationContext as foss.opengallery.app.OpenGalleryApp).container
+    val settings by container.settingsRepository.settings.collectAsState(
+        initial = foss.opengallery.app.data.settings.SettingsRepository.Settings()
+    )
     val vm = ogViewModel { _ ->
         StoriesViewModel(context.applicationContext as Application)
     }
-    val stories by vm.stories.collectAsState()
+    val allStories by vm.stories.collectAsState()
+    val stories = if (settings.autoCreateStories) allStories else emptyList()
 
     LazyColumn(Modifier.fillMaxSize().background(OgColors.Background)) {
         item {

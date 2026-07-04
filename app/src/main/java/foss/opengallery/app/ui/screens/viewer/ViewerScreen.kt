@@ -60,6 +60,7 @@ import foss.opengallery.app.ui.components.PopupEntry
 import foss.opengallery.app.ui.ogViewModel
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 /**
@@ -280,9 +281,20 @@ fun ViewerScreen(
                     }
                     ViewerAction("Info") { detailsFor = currentItem }
                     ViewerAction("Share") {
-                        currentItem?.let {
+                        val item = currentItem ?: return@ViewerAction
+                        scope.launch {
+                            val container =
+                                (context.applicationContext as foss.opengallery.app.OpenGalleryApp)
+                                    .container
+                            val strip = container.settingsRepository.settings
+                                .firstOrNull()?.stripLocationOnShare == true
+                            val intent = if (strip && !item.isVideo) {
+                                foss.opengallery.app.util.StripShare.buildIntent(
+                                    context, listOf(item.uri)
+                                )
+                            } else null
                             context.startActivity(
-                                MediaActions.shareIntent(listOf(it.uri), it.mimeType)
+                                intent ?: MediaActions.shareIntent(listOf(item.uri), item.mimeType)
                             )
                         }
                     }
