@@ -55,6 +55,10 @@ import foss.opengallery.app.data.model.MediaItem
 import foss.opengallery.app.ui.components.HeaderAction
 import foss.opengallery.app.ui.components.HeaderIconButton
 import foss.opengallery.app.ui.components.OgIcons.drawHeart
+import foss.opengallery.app.ui.components.OgIcons.drawInfo
+import foss.opengallery.app.ui.components.OgIcons.drawPencil
+import foss.opengallery.app.ui.components.OgIcons.drawShare
+import foss.opengallery.app.ui.components.OgIcons.drawTrash
 import foss.opengallery.app.ui.components.OneUiPopupMenu
 import foss.opengallery.app.ui.components.PopupEntry
 import foss.opengallery.app.ui.ogViewModel
@@ -162,11 +166,14 @@ fun ViewerScreen(
             ) {
                 HeaderIconButton(HeaderAction.Back) { onBack() }
                 Box(Modifier.weight(1f))
-                HeaderIconButton(HeaderAction.More) { menuOpen = true }
-                OneUiPopupMenu(
-                    expanded = menuOpen,
-                    onDismiss = { menuOpen = false },
-                    entries = buildList {
+                // The popup must share a parent with the ⋮ button so the
+                // menu anchors under it at the right edge.
+                Box {
+                    HeaderIconButton(HeaderAction.More) { menuOpen = true }
+                    OneUiPopupMenu(
+                        expanded = menuOpen,
+                        onDismiss = { menuOpen = false },
+                        entries = buildList {
                         add(PopupEntry("Copy to clipboard") {
                             currentItem?.let { copyToClipboard(context, it) }
                         })
@@ -201,11 +208,12 @@ fun ViewerScreen(
                                 }
                             }
                         })
-                        add(PopupEntry("Print") {
-                            currentItem?.let { printImage(context, it) }
-                        })
-                    },
-                )
+                            add(PopupEntry("Print") {
+                                currentItem?.let { printImage(context, it) }
+                            })
+                        },
+                    )
+                }
             }
         }
 
@@ -266,7 +274,7 @@ fun ViewerScreen(
                             strokeWidth = 2.2.dp.toPx(),
                         )
                     }
-                    ViewerAction("Edit") {
+                    ViewerIconAction({ c, w -> drawPencil(c, w) }) {
                         currentItem?.let { item ->
                             if (item.isVideo) {
                                 runCatching {
@@ -279,9 +287,9 @@ fun ViewerScreen(
                             }
                         }
                     }
-                    ViewerAction("Info") { detailsFor = currentItem }
-                    ViewerAction("Share") {
-                        val item = currentItem ?: return@ViewerAction
+                    ViewerIconAction({ c, w -> drawInfo(c, w) }) { detailsFor = currentItem }
+                    ViewerIconAction({ c, w -> drawShare(c, w) }) shareAction@{
+                        val item = currentItem ?: return@shareAction
                         scope.launch {
                             val container =
                                 (context.applicationContext as foss.opengallery.app.OpenGalleryApp)
@@ -298,8 +306,8 @@ fun ViewerScreen(
                             )
                         }
                     }
-                    ViewerAction("Delete") {
-                        val item = currentItem ?: return@ViewerAction
+                    ViewerIconAction({ c, w -> drawTrash(c, w) }) deleteAction@{
+                        val item = currentItem ?: return@deleteAction
                         if (MediaActions.canUseSystemTrash()) {
                             deleteLauncher.launch(
                                 IntentSenderRequest.Builder(
@@ -327,16 +335,19 @@ fun ViewerScreen(
 }
 
 @Composable
-private fun ViewerAction(label: String, onClick: () -> Unit) {
+private fun ViewerIconAction(
+    draw: androidx.compose.ui.graphics.drawscope.DrawScope.(Color, Float) -> Unit,
+    onClick: () -> Unit,
+) {
     val interaction = remember { MutableInteractionSource() }
-    Text(
-        text = label,
-        style = OgType.ItemLabel,
-        color = OgColors.TextPrimary,
-        modifier = Modifier
+    Canvas(
+        Modifier
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 14.dp),
-    )
+            .padding(14.dp)
+            .size(24.dp)
+    ) {
+        draw(OgColors.TextPrimary, 2.dp.toPx())
+    }
 }
 
 @Composable

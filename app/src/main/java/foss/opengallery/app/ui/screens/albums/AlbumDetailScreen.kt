@@ -38,6 +38,9 @@ import foss.opengallery.app.data.MediaActions
 import foss.opengallery.app.data.model.MediaItem
 import foss.opengallery.app.ui.components.CompactHeaderBar
 import foss.opengallery.app.ui.components.HeaderAction
+import foss.opengallery.app.ui.components.OgIcons.drawClose
+import foss.opengallery.app.ui.components.OgIcons.drawShare
+import foss.opengallery.app.ui.components.OgIcons.drawTrash
 import foss.opengallery.app.ui.components.OneUiPopupMenu
 import foss.opengallery.app.ui.components.PopupEntry
 import foss.opengallery.app.ui.components.SelectionAction
@@ -126,7 +129,7 @@ fun AlbumDetailScreen(
             )
         }
 
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
             LazyVerticalGrid(
                 state = gridState,
                 columns = GridCells.Fixed(3),
@@ -183,32 +186,42 @@ fun AlbumDetailScreen(
                 }
             }
         }
-    }
 
-    if (selectionMode) {
-        SelectionBottomBar(
-            actions = listOf(
-                SelectionAction("Cancel") { vm.clearSelection() },
-                SelectionAction("Share", enabled = selection.isNotEmpty()) {
-                    context.startActivity(MediaActions.shareIntent(selectedUris()))
-                },
-                SelectionAction("Delete", enabled = selection.isNotEmpty()) {
-                    val uris = selectedUris()
-                    if (MediaActions.canUseSystemTrash()) {
-                        trashLauncher.launch(
-                            IntentSenderRequest.Builder(
-                                MediaActions.trashRequest(context.contentResolver, uris).intentSender
-                            ).build()
-                        )
-                    } else {
-                        scope.launch {
-                            MediaActions.deleteDirect(context, uris)
-                            vm.clearSelection()
+        if (selectionMode) {
+            SelectionBottomBar(
+                actions = listOf(
+                    SelectionAction("Cancel", icon = { c, w -> drawClose(c, w) }) {
+                        vm.clearSelection()
+                    },
+                    SelectionAction(
+                        "Share",
+                        enabled = selection.isNotEmpty(),
+                        icon = { c, w -> drawShare(c, w) },
+                    ) {
+                        context.startActivity(MediaActions.shareIntent(selectedUris()))
+                    },
+                    SelectionAction(
+                        "Delete",
+                        enabled = selection.isNotEmpty(),
+                        icon = { c, w -> drawTrash(c, w) },
+                    ) {
+                        val uris = selectedUris()
+                        if (MediaActions.canUseSystemTrash()) {
+                            trashLauncher.launch(
+                                IntentSenderRequest.Builder(
+                                    MediaActions.trashRequest(context.contentResolver, uris).intentSender
+                                ).build()
+                            )
+                        } else {
+                            scope.launch {
+                                MediaActions.deleteDirect(context, uris)
+                                vm.clearSelection()
+                            }
                         }
-                    }
-                },
+                    },
+                )
             )
-        )
+        }
     }
 }
 

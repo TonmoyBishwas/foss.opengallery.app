@@ -83,7 +83,9 @@ fun androidx.compose.foundation.layout.BoxScope.FastScrubber(
         modifier = modifier
             .align(Alignment.CenterEnd)
             .fillMaxHeight()
-            .padding(vertical = 8.dp),
+            // Keep the track below the status bar / header area and above the
+            // bottom edge so the thumb never rides into system chrome.
+            .padding(top = 72.dp, bottom = 24.dp),
     ) {
         Box(
             Modifier

@@ -108,21 +108,14 @@ private fun HamburgerButton(onClick: () -> Unit) {
         val stroke = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
         val w = size.width
         val h = size.height
-        val yTop = h * 0.32f
-        val yBottom = h * 0.68f
-        drawLine(
-            color = OgColors.TextPrimary,
-            start = androidx.compose.ui.geometry.Offset(w * 0.12f, yTop),
-            end = androidx.compose.ui.geometry.Offset(w * 0.88f, yTop),
-            strokeWidth = stroke.width,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = OgColors.TextPrimary,
-            start = androidx.compose.ui.geometry.Offset(w * 0.12f, yBottom),
-            end = androidx.compose.ui.geometry.Offset(w * 0.88f, yBottom),
-            strokeWidth = stroke.width,
-            cap = StrokeCap.Round,
-        )
+        listOf(0.26f, 0.5f, 0.74f).forEach { fy ->
+            drawLine(
+                color = OgColors.TextPrimary,
+                start = androidx.compose.ui.geometry.Offset(w * 0.12f, h * fy),
+                end = androidx.compose.ui.geometry.Offset(w * 0.88f, h * fy),
+                strokeWidth = stroke.width,
+                cap = StrokeCap.Round,
+            )
+        }
     }
 }

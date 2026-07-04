@@ -45,9 +45,14 @@ fun SelectionHeader(
     }
 }
 
-data class SelectionAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
+data class SelectionAction(
+    val label: String,
+    val enabled: Boolean = true,
+    val icon: (androidx.compose.ui.graphics.drawscope.DrawScope.(androidx.compose.ui.graphics.Color, Float) -> Unit)? = null,
+    val onClick: () -> Unit,
+)
 
-/** Bottom action bar replacing the main tabs while selecting. */
+/** Bottom action bar replacing the main tabs while selecting: icon + label. */
 @Composable
 fun SelectionBottomBar(
     actions: List<SelectionAction>,
@@ -58,16 +63,15 @@ fun SelectionBottomBar(
             .fillMaxWidth()
             .background(OgColors.Background)
             .navigationBarsPadding()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         actions.forEach { action ->
             val interaction = remember { MutableInteractionSource() }
-            Text(
-                text = action.label,
-                style = OgType.TabLabel,
-                color = if (action.enabled) OgColors.TextPrimary else OgColors.TextTertiary,
+            val tint = if (action.enabled) OgColors.TextPrimary else OgColors.TextTertiary
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .clickable(
                         interactionSource = interaction,
@@ -75,8 +79,18 @@ fun SelectionBottomBar(
                         enabled = action.enabled,
                         onClick = action.onClick,
                     )
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-            )
+                    .padding(horizontal = 18.dp, vertical = 6.dp),
+            ) {
+                action.icon?.let { icon ->
+                    Canvas(Modifier.size(24.dp)) { icon(this, tint, 2.dp.toPx()) }
+                }
+                Text(
+                    text = action.label,
+                    style = OgType.ItemSecondary,
+                    color = tint,
+                    modifier = Modifier.padding(top = if (action.icon != null) 5.dp else 0.dp),
+                )
+            }
         }
     }
 }

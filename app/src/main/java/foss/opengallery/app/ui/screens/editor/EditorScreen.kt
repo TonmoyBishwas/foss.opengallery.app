@@ -5,19 +5,25 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -36,7 +42,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -45,14 +53,24 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import foss.opengallery.app.ui.components.OgIcons.drawCrop
+import foss.opengallery.app.ui.components.OgIcons.drawDecorate
+import foss.opengallery.app.ui.components.OgIcons.drawFilterTriad
+import foss.opengallery.app.ui.components.OgIcons.drawFlip
+import foss.opengallery.app.ui.components.OgIcons.drawRotate
+import foss.opengallery.app.ui.components.OgIcons.drawTone
+import foss.opengallery.app.ui.components.OgIcons.drawUndoArrow
 import foss.opengallery.app.ui.ogViewModel
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
+import kotlin.math.roundToInt
+
+private val EditorAccent = Color(0xFFF7CE46)
+private val EditorChip = Color(0xFF26262B)
 
 /** Editor sections in the bottom navigation, mirroring the reference design. */
 enum class EditorSection(val label: String) {
-    Transform("Transform"), Filters("Filters"), Tone("Tone"),
-    Decorate("Decorate"), Tools("Tools"),
+    Transform("Transform"), Filters("Filters"), Tone("Tone"), Decorate("Decorate"),
 }
 
 /**
@@ -88,15 +106,16 @@ fun EditorScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        // Top bar: undo/redo — Revert / Save.
+        // Top bar: circular undo/redo — Revert / Save, as in the reference.
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EditorTextButton("Undo", enabled = canUndo) { vm.undo() }
-            EditorTextButton("Redo", enabled = canRedo) { vm.redo() }
+            UndoRedoButton(redo = false, enabled = canUndo) { vm.undo() }
+            Spacer(Modifier.width(10.dp))
+            UndoRedoButton(redo = true, enabled = canRedo) { vm.redo() }
             Box(Modifier.weight(1f))
             EditorTextButton("Revert", enabled = !state.isIdentity) { vm.revert() }
             EditorTextButton(
@@ -128,26 +147,62 @@ fun EditorScreen(
             EditorSection.Filters -> FilterControls(preview, state, vm::update)
             EditorSection.Tone -> ToneControls(state, vm::update)
             EditorSection.Decorate -> DecorateControls(state, vm::update)
-            EditorSection.Tools -> ToolsControls(state, vm::update)
         }
 
-        // Bottom section switcher.
+        // Bottom section switcher: icons, active one in the editor accent.
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
+                .padding(vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             EditorSection.entries.forEach { s ->
-                Text(
-                    text = s.label,
-                    style = OgType.ItemSecondary,
-                    color = if (s == section) Color(0xFFF7CE46) else OgColors.TextSecondary,
-                    modifier = Modifier
-                        .clickable { section = s }
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                )
+                val interaction = remember { MutableInteractionSource() }
+                val tint = if (s == section) EditorAccent else OgColors.TextSecondary
+                Canvas(
+                    Modifier
+                        .clickable(
+                            interactionSource = interaction,
+                            indication = null,
+                        ) { section = s }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .size(26.dp)
+                ) {
+                    val w = 2.dp.toPx()
+                    when (s) {
+                        EditorSection.Transform -> drawCrop(tint, w)
+                        EditorSection.Filters -> drawFilterTriad(tint, w)
+                        EditorSection.Tone -> drawTone(tint, w)
+                        EditorSection.Decorate -> drawDecorate(tint, w)
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun UndoRedoButton(redo: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .size(38.dp)
+            .background(EditorChip, CircleShape)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(18.dp)) {
+            drawUndoArrow(
+                if (enabled) OgColors.TextPrimary else OgColors.TextTertiary,
+                2.dp.toPx(),
+                mirrored = redo,
+            )
         }
     }
 }
@@ -289,41 +344,138 @@ private fun EditorPreview(
     }
 }
 
-/** Transform: rotate / flip / straighten. */
+/** Aspect presets cycled by the pill button, like the reference "Free" chip. */
+private val AspectPresets = listOf(
+    "Free" to null,
+    "1:1" to 1f,
+    "4:3" to 4f / 3f,
+    "3:4" to 3f / 4f,
+    "16:9" to 16f / 9f,
+)
+
+/** Transform: flip / rotate / aspect pill + the straighten ruler dial. */
 @Composable
 private fun TransformControls(state: EditState, onUpdate: ((EditState) -> EditState) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        Text(
-            "Straighten",
-            style = OgType.ItemSecondary,
-            color = OgColors.TextSecondary,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        )
-        Slider(
-            value = state.straighten,
-            onValueChange = { v -> onUpdate { it.copy(straighten = v) } },
-            valueRange = -45f..45f,
-            colors = editorSliderColors(),
-        )
+    var aspectIndex by rememberSaveable { mutableStateOf(0) }
+    Column(Modifier.fillMaxWidth()) {
+        // Centered pill: flip · rotate · aspect.
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .background(EditorChip, RoundedCornerShape(22.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            EditorTextButton("Rotate") {
-                onUpdate { it.copy(rotate90 = (it.rotate90 + 1) % 4) }
-            }
-            EditorTextButton("Flip") {
+            PillIconButton({ c, w -> drawFlip(c, w) }) {
                 onUpdate { it.copy(flipHorizontal = !it.flipHorizontal) }
             }
-            EditorTextButton("Reset") {
-                onUpdate {
-                    it.copy(
-                        rotate90 = 0, flipHorizontal = false, straighten = 0f,
-                        crop = androidx.compose.ui.geometry.Rect(0f, 0f, 1f, 1f),
-                    )
+            PillIconButton({ c, w -> drawRotate(c, w) }) {
+                onUpdate { it.copy(rotate90 = (it.rotate90 + 1) % 4) }
+            }
+            Text(
+                text = AspectPresets[aspectIndex].first,
+                style = OgType.ItemSecondary,
+                color = OgColors.TextPrimary,
+                modifier = Modifier
+                    .clickable {
+                        aspectIndex = (aspectIndex + 1) % AspectPresets.size
+                        val aspect = AspectPresets[aspectIndex].second
+                        onUpdate {
+                            it.copy(
+                                crop = if (aspect == null) {
+                                    androidx.compose.ui.geometry.Rect(0f, 0f, 1f, 1f)
+                                } else {
+                                    centeredCrop(aspect)
+                                }
+                            )
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+        Text(
+            text = if (state.straighten.roundToInt() != 0) {
+                "Straighten  ${state.straighten.roundToInt()}°"
+            } else {
+                "Straighten"
+            },
+            style = OgType.ItemSecondary,
+            color = OgColors.TextSecondary,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(top = 10.dp),
+        )
+        StraightenRuler(
+            value = state.straighten,
+            onDragDegrees = { delta ->
+                onUpdate { it.copy(straighten = (it.straighten + delta).coerceIn(-45f, 45f)) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun PillIconButton(
+    draw: DrawScope.(Color, Float) -> Unit,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Canvas(
+        Modifier
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .size(22.dp)
+    ) {
+        draw(OgColors.TextPrimary, 1.8.dp.toPx())
+    }
+}
+
+/**
+ * The tick-mark straighten dial: the ruler slides under a fixed center
+ * indicator as you drag, exactly like the reference editor.
+ */
+@Composable
+private fun StraightenRuler(value: Float, onDragDegrees: (Float) -> Unit) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val pxPerDeg = with(density) { 6.dp.toPx() }
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .padding(horizontal = 24.dp)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, dragAmount ->
+                    change.consume()
+                    // Ruler follows the finger: dragging right lowers the angle.
+                    onDragDegrees(-dragAmount / pxPerDeg)
                 }
             }
+    ) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        var deg = -45
+        while (deg <= 45) {
+            val x = cx + (deg - value) * pxPerDeg
+            if (x in 0f..size.width) {
+                val tall = deg % 15 == 0
+                val h = if (tall) 9.dp.toPx() else 5.dp.toPx()
+                drawLine(
+                    if (tall) OgColors.TextSecondary else OgColors.TextTertiary,
+                    Offset(x, cy - h),
+                    Offset(x, cy + h),
+                    1.5.dp.toPx(),
+                    StrokeCap.Round,
+                )
+            }
+            deg += 3
         }
+        drawLine(
+            EditorAccent,
+            Offset(cx, cy - 13.dp.toPx()),
+            Offset(cx, cy + 13.dp.toPx()),
+            2.5.dp.toPx(),
+            StrokeCap.Round,
+        )
     }
 }
 
@@ -498,32 +650,6 @@ private fun DecorateControls(state: EditState, onUpdate: ((EditState) -> EditSta
                     )
                 }
                 textInput = ""
-            }
-        }
-    }
-}
-
-/** Tools: crop aspect shortcuts (full crop UI) + notes for advanced tools. */
-@Composable
-private fun ToolsControls(state: EditState, onUpdate: ((EditState) -> EditState) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Text(
-            "Crop",
-            style = OgType.ItemSecondary,
-            color = OgColors.TextSecondary,
-        )
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-        ) {
-            EditorTextButton("Free") { /* full rect */ }
-            EditorTextButton("1:1") { onUpdate { it.copy(crop = centeredCrop(1f)) } }
-            EditorTextButton("4:3") { onUpdate { it.copy(crop = centeredCrop(4f / 3f)) } }
-            EditorTextButton("3:4") { onUpdate { it.copy(crop = centeredCrop(3f / 4f)) } }
-            EditorTextButton("16:9") { onUpdate { it.copy(crop = centeredCrop(16f / 9f)) } }
-            EditorTextButton("Full") {
-                onUpdate { it.copy(crop = androidx.compose.ui.geometry.Rect(0f, 0f, 1f, 1f)) }
             }
         }
     }

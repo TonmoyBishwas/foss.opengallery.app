@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.1] — 2026-07-04
+
+UI polish release based on first-device feedback.
+
+### Fixed
+- Selection mode: Cancel / Share / Delete no longer render under the status
+  bar — they are now a proper bottom action bar with icons
+- Fast scrubber no longer travels into the status-bar area
+- Viewer overflow menu now opens anchored under the ⋮ button (top right)
+  instead of the left edge
+
+### Changed
+- Menu button in the bottom tabs is now a proper three-line glyph
+- The ☰ drawer sheet entries now have icons (Videos, Favourites, Recent,
+  Suggestions, Locations, Recycle bin, Settings, Locked folder)
+- Viewer bottom actions are now icons (favourite, edit, info, share, delete)
+  matching the reference design
+- Editor redesigned to match the reference: circular undo/redo buttons,
+  icon section tabs (transform, filters, tone, decorate), a tick-mark
+  straighten ruler dial, and a flip / rotate / aspect pill
+
 ## [1.0.0] — 2026-07-04
 
 First release. A free, open-source, local-first gallery in a familiar
