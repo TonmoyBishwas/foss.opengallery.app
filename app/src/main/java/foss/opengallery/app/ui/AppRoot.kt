@@ -15,8 +15,8 @@ import androidx.compose.ui.Modifier
 import foss.opengallery.app.ui.components.MainTab
 import foss.opengallery.app.ui.components.OneUiBottomTabs
 import foss.opengallery.app.ui.screens.AlbumsScreen
-import foss.opengallery.app.ui.screens.PicturesScreen
 import foss.opengallery.app.ui.screens.StoriesScreen
+import foss.opengallery.app.ui.screens.pictures.PicturesScreen
 import foss.opengallery.app.ui.theme.OgColors
 
 /**

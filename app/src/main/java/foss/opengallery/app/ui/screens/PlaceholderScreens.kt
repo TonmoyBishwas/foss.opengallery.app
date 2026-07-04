@@ -9,13 +9,8 @@ import androidx.compose.ui.Modifier
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
 
-// Temporary shells for the three tabs; each is replaced by its real
-// implementation in later milestones (M3 Pictures, M4 Albums, M9 Stories).
-
-@Composable
-fun PicturesScreen() {
-    HeroPlaceholder("Pictures")
-}
+// Temporary shells; each is replaced by its real implementation in later
+// milestones (M4 Albums, M9 Stories).
 
 @Composable
 fun AlbumsScreen() {
