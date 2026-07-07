@@ -20,13 +20,19 @@ data class AlbumEntry(
 )
 
 /** Virtual albums always shown alongside folder albums. */
-enum class VirtualAlbum(val key: String, val title: String) {
+enum class VirtualAlbum(
+    val key: String,
+    val title: String,
+    /** MediaStore bucket backing this album, when it maps to one — the
+     *  single source both the SQL selection and card counts match on. */
+    val bucketName: String? = null,
+) {
     Recent("recent", "Recent"),
     Favourites("favourites", "Favourites"),
-    Camera("camera", "Camera"),
-    Screenshots("screenshots", "Screenshots"),
+    Camera("camera", "Camera", bucketName = "Camera"),
+    Screenshots("screenshots", "Screenshots", bucketName = "Screenshots"),
     Videos("videos", "Videos"),
-    Download("download", "Download"),
+    Download("download", "Download", bucketName = "Download"),
     ;
 
     companion object {
@@ -102,13 +108,10 @@ class AlbumsRepository(
         VirtualAlbum.Recent -> MediaQuery.MEDIA_TYPE_SELECTION to null
         VirtualAlbum.Favourites ->
             "${MediaQuery.MEDIA_TYPE_SELECTION} AND ${MediaStore.MediaColumns.IS_FAVORITE} = 1" to null
-        VirtualAlbum.Camera ->
-            "${MediaQuery.MEDIA_TYPE_SELECTION} AND bucket_display_name = ?" to arrayOf("Camera")
-        VirtualAlbum.Screenshots ->
-            "${MediaQuery.MEDIA_TYPE_SELECTION} AND bucket_display_name = ?" to arrayOf("Screenshots")
+        VirtualAlbum.Camera, VirtualAlbum.Screenshots, VirtualAlbum.Download ->
+            "${MediaQuery.MEDIA_TYPE_SELECTION} AND bucket_display_name = ?" to
+                arrayOf(album.bucketName!!)
         VirtualAlbum.Videos ->
             "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO}" to null
-        VirtualAlbum.Download ->
-            "${MediaQuery.MEDIA_TYPE_SELECTION} AND bucket_display_name = ?" to arrayOf("Download")
     }
 }

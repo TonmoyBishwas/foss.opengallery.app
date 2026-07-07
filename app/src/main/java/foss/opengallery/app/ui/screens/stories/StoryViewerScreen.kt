@@ -1,6 +1,5 @@
 package foss.opengallery.app.ui.screens.stories
 
-import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -26,26 +25,60 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import foss.opengallery.app.data.MediaQuery
 import foss.opengallery.app.data.model.MediaItem
 import foss.opengallery.app.ui.components.HeaderAction
 import foss.opengallery.app.ui.components.HeaderIconButton
-import foss.opengallery.app.ui.ogViewModel
-import foss.opengallery.app.ui.screens.search.SearchViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.ZoneId
 
-/** Auto-advancing story slideshow with per-page progress segments. */
+/**
+ * Auto-advancing story slideshow with per-page progress segments.
+ * Takes the story's day range and re-derives its items, mirroring
+ * [StoriesViewModel.buildStories] membership (camera roll first, whole
+ * library as fallback) — passing thousands of ids through the nav route
+ * risked TransactionTooLargeException on process save.
+ */
 @Composable
 fun StoryViewerScreen(
-    itemIds: List<Long>,
+    fromEpochDay: Long,
+    toEpochDay: Long,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Reuse the id->items loader from search.
-    val loader = ogViewModel(key = "storyloader") { c ->
-        SearchViewModel(context.applicationContext as Application, c.database)
-    }
-    val items by produceState<List<MediaItem>>(emptyList(), itemIds) {
-        value = loader.queryByIds(itemIds)
+    val items by produceState<List<MediaItem>>(emptyList(), fromEpochDay, toEpochDay) {
+        value = withContext(Dispatchers.IO) {
+            val zone = ZoneId.systemDefault()
+            val startMs = LocalDate.ofEpochDay(fromEpochDay)
+                .atStartOfDay(zone).toInstant().toEpochMilli()
+            val endMs = LocalDate.ofEpochDay(toEpochDay).plusDays(1)
+                .atStartOfDay(zone).toInstant().toEpochMilli()
+            // Same taken-time fallback as MediaItem.takenAtMillis: datetaken
+            // when present, otherwise date_added (seconds).
+            val timeSel = "((datetaken > 0 AND datetaken >= ? AND datetaken < ?) OR " +
+                "((datetaken IS NULL OR datetaken <= 0) AND " +
+                "date_added >= ? AND date_added < ?))"
+            val timeArgs = arrayOf(
+                startMs.toString(), endMs.toString(),
+                (startMs / 1000).toString(), (endMs / 1000).toString(),
+            )
+            val resolver = context.contentResolver
+            MediaQuery.queryPage(
+                resolver, offset = 0, limit = 4000,
+                selection = "${MediaQuery.MEDIA_TYPE_SELECTION} AND " +
+                    "bucket_display_name = ? AND $timeSel",
+                selectionArgs = arrayOf("Camera") + timeArgs,
+            ).ifEmpty {
+                MediaQuery.queryPage(
+                    resolver, offset = 0, limit = 4000,
+                    selection = "${MediaQuery.MEDIA_TYPE_SELECTION} AND $timeSel",
+                    selectionArgs = timeArgs,
+                )
+            }.sortedBy { it.takenAtMillis }
+        }
     }
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize().background(Color.Black))

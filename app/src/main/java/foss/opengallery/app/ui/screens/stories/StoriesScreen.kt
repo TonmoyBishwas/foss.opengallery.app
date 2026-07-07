@@ -29,16 +29,24 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import coil3.compose.AsyncImage
 import foss.opengallery.app.data.MediaQuery
+import foss.opengallery.app.data.MediaRepository
 import foss.opengallery.app.data.model.MediaItem
+import foss.opengallery.app.data.settings.SettingsRepository
 import foss.opengallery.app.ui.ogViewModel
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgShapes
 import foss.opengallery.app.ui.theme.OgType
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
@@ -52,19 +60,32 @@ data class Story(
     val title: String,
     val dateLabel: String,
     val cover: MediaItem,
-    val itemIds: List<Long>,
+    /** Day range, used as the compact nav-route descriptor — the viewer
+     *  re-derives the item list from it. */
+    val fromEpochDay: Long,
+    val toEpochDay: Long,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class StoriesViewModel(
     application: Application,
+    media: MediaRepository,
+    settings: SettingsRepository,
 ) : AndroidViewModel(application) {
 
-    private val _stories = MutableStateFlow<List<Story>>(emptyList())
-    val stories: StateFlow<List<Story>> = _stories.asStateFlow()
-
-    init {
-        viewModelScope.launch { _stories.value = buildStories() }
-    }
+    /**
+     * Rebuilds on debounced media changes, but only while the Stories tab
+     * is actually collecting (WhileSubscribed) — no background scans while
+     * the user lives in another tab. Off switch skips the scan entirely.
+     */
+    val stories: StateFlow<List<Story>> = settings.settings
+        .map { it.autoCreateStories }
+        .distinctUntilChanged()
+        .flatMapLatest { enabled ->
+            if (!enabled) flowOf(emptyList())
+            else media.changes.onStart { emit(Unit) }.mapLatest { buildStories() }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
      * Purely algorithmic story mining (no AI, works offline):
@@ -118,7 +139,8 @@ class StoriesViewModel(
                 dateLabel = if (from == to) dayFmt.format(from)
                 else "${dayFmt.format(from)} – ${dayFmt.format(to)}",
                 cover = storyItems[storyItems.size / 2],
-                itemIds = storyItems.map { it.id },
+                fromEpochDay = from.toEpochDay(),
+                toEpochDay = to.toEpochDay(),
             )
         }
     }
@@ -133,15 +155,14 @@ class StoriesViewModel(
 @Composable
 fun StoriesScreen(onOpenStory: (Story) -> Unit) {
     val context = LocalContext.current
-    val container = (context.applicationContext as foss.opengallery.app.OpenGalleryApp).container
-    val settings by container.settingsRepository.settings.collectAsState(
-        initial = foss.opengallery.app.data.settings.SettingsRepository.Settings()
-    )
-    val vm = ogViewModel { _ ->
-        StoriesViewModel(context.applicationContext as Application)
+    val vm = ogViewModel { c ->
+        StoriesViewModel(
+            context.applicationContext as Application,
+            c.mediaRepository,
+            c.settingsRepository,
+        )
     }
-    val allStories by vm.stories.collectAsState()
-    val stories = if (settings.autoCreateStories) allStories else emptyList()
+    val stories by vm.stories.collectAsState()
 
     LazyColumn(
         Modifier

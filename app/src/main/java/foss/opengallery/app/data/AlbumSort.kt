@@ -18,15 +18,18 @@ enum class AlbumSort(val encoded: Int, val label: String) {
     SizeAsc(7, "Size (smallest first)"),
     ;
 
+    // Every order ends in _ID so it is total: LIMIT/OFFSET pages over a sort
+    // with ties are otherwise nondeterministic, which duplicates or drops
+    // rows at page boundaries (and duplicate ids crash the lazy grid).
     fun toSqlSort(): String = when (this) {
         DateAddedDesc -> "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
         DateAddedAsc -> "${MediaStore.MediaColumns.DATE_ADDED} ASC, ${MediaStore.MediaColumns._ID} ASC"
-        DateTakenDesc -> "datetaken DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
-        DateTakenAsc -> "datetaken ASC, ${MediaStore.MediaColumns.DATE_ADDED} ASC"
-        NameAsc -> "${MediaStore.MediaColumns.DISPLAY_NAME} COLLATE NOCASE ASC"
-        NameDesc -> "${MediaStore.MediaColumns.DISPLAY_NAME} COLLATE NOCASE DESC"
-        SizeDesc -> "${MediaStore.MediaColumns.SIZE} DESC"
-        SizeAsc -> "${MediaStore.MediaColumns.SIZE} ASC"
+        DateTakenDesc -> "datetaken DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
+        DateTakenAsc -> "datetaken ASC, ${MediaStore.MediaColumns.DATE_ADDED} ASC, ${MediaStore.MediaColumns._ID} ASC"
+        NameAsc -> "${MediaStore.MediaColumns.DISPLAY_NAME} COLLATE NOCASE ASC, ${MediaStore.MediaColumns._ID} ASC"
+        NameDesc -> "${MediaStore.MediaColumns.DISPLAY_NAME} COLLATE NOCASE DESC, ${MediaStore.MediaColumns._ID} DESC"
+        SizeDesc -> "${MediaStore.MediaColumns.SIZE} DESC, ${MediaStore.MediaColumns._ID} DESC"
+        SizeAsc -> "${MediaStore.MediaColumns.SIZE} ASC, ${MediaStore.MediaColumns._ID} ASC"
     }
 
     companion object {

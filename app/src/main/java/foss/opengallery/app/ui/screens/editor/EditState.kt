@@ -204,6 +204,20 @@ object Filters {
     }
 }
 
+/**
+ * Zoom factor that hides the wedges a straighten rotation opens up: the
+ * smallest scale at which a w×h frame rotated by [degrees] still covers
+ * the original frame. Shared by the live preview and the full-res render
+ * so preview == output.
+ */
+fun straightenScale(w: Float, h: Float, degrees: Float): Float {
+    if (degrees == 0f || w <= 0f || h <= 0f) return 1f
+    val a = Math.toRadians(kotlin.math.abs(degrees).toDouble())
+    val cosA = Math.cos(a).toFloat()
+    val sinA = Math.sin(a).toFloat()
+    return cosA + maxOf(w / h, h / w) * sinA
+}
+
 /** Builds the combined live-preview color matrix for a state. */
 object ToneMatrix {
 

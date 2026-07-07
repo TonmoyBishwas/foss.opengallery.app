@@ -2,6 +2,10 @@ package foss.opengallery.app.ui.screens.locations
 
 import android.app.Application
 import androidx.compose.foundation.background
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -207,27 +212,59 @@ private fun CityCard(vm: LocationsViewModel, group: CityGroup, onClick: () -> Un
 
 @Composable
 private fun OsmMap(pins: List<MediaIndexEntity>) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val map = remember {
+        Configuration.getInstance().userAgentValue = context.packageName
+        MapView(context).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            controller.setZoom(5.0)
+        }
+    }
+    // osmdroid needs lifecycle forwarding for tile loading/cleanup.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> map.onResume()
+                Lifecycle.Event.ON_PAUSE -> map.onPause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            map.onDetach()
+        }
+    }
+    // update runs after every recomposition — only rebuild markers when the
+    // pins emission actually changed, not on unrelated recompositions.
+    val lastPins = remember { arrayOfNulls<List<MediaIndexEntity>>(1) }
     AndroidView(
-        factory = { ctx ->
-            Configuration.getInstance().userAgentValue = ctx.packageName
-            MapView(ctx).apply {
-                setTileSource(TileSourceFactory.MAPNIK)
-                setMultiTouchControls(true)
-                controller.setZoom(5.0)
-                val first = pins.firstOrNull()
-                if (first?.latitude != null && first.longitude != null) {
-                    controller.setCenter(GeoPoint(first.latitude, first.longitude))
-                }
+        factory = { map },
+        update = { view ->
+            if (pins !== lastPins[0]) {
+                lastPins[0] = pins
+                // Center only on first population so a panned map stays put.
+                val firstLoad = view.overlays.isEmpty()
+                view.overlays.clear()
                 pins.forEach { pin ->
                     if (pin.latitude != null && pin.longitude != null) {
-                        overlays.add(
-                            Marker(this).apply {
+                        view.overlays.add(
+                            Marker(view).apply {
                                 position = GeoPoint(pin.latitude, pin.longitude)
                                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                             }
                         )
                     }
                 }
+                if (firstLoad) {
+                    val first = pins.firstOrNull()
+                    if (first?.latitude != null && first.longitude != null) {
+                        view.controller.setCenter(GeoPoint(first.latitude, first.longitude))
+                    }
+                }
+                view.invalidate()
             }
         },
         modifier = Modifier.fillMaxSize(),

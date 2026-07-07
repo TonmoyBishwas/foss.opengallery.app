@@ -60,6 +60,11 @@ class ViewerSource(
         }
     }
 
+    /** Evict a cached item so the next fetch re-reads MediaStore. */
+    fun invalidate(mediaId: Long) {
+        cache.remove(mediaId)
+    }
+
     /** Drop a deleted id so the pager collapses around it. */
     fun remove(mediaId: Long) {
         cache.remove(mediaId)

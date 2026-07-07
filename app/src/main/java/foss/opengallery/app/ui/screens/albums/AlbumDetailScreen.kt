@@ -1,9 +1,5 @@
 package foss.opengallery.app.ui.screens.albums
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -22,7 +18,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +45,6 @@ import foss.opengallery.app.ui.components.SelectionHeader
 import foss.opengallery.app.ui.ogViewModel
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
-import kotlinx.coroutines.launch
 
 /**
  * One album's grid: bucket, virtual or custom. Title + "N images M videos"
@@ -73,18 +67,15 @@ fun AlbumDetailScreen(
     val selectionMode by vm.selectionMode.collectAsState()
     val gridState = rememberLazyGridState()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
 
-    val trashLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { vm.clearSelection() }
-
-    fun selectedUris(): List<Uri> = (0 until items.itemCount).mapNotNull { i ->
-        val item = items.peek(i) ?: return@mapNotNull null
-        if (item.id in selection) item.uri else null
-    }
+    // 30+: system trash in binder-safe batches. 26–29: the app recycle bin,
+    // per the recycle-bin hard rule — never straight to permanent deletion.
+    val systemTrashRunner =
+        foss.opengallery.app.ui.components.rememberSystemTrashRunner { vm.clearSelection() }
+    val legacyTrashRunner =
+        foss.opengallery.app.ui.components.rememberLegacyTrashRunner { vm.clearSelection() }
 
     Column(Modifier.fillMaxSize().background(OgColors.Background)) {
         if (selectionMode) {
@@ -118,6 +109,10 @@ fun AlbumDetailScreen(
                 onDismiss = { menuOpen = false },
                 entries = listOf(
                     PopupEntry("Edit") { vm.enterSelection() },
+                    PopupEntry("Select all") {
+                        vm.enterSelection()
+                        vm.selectAll()
+                    },
                     PopupEntry("Sort") { sortOpen = true },
                 ),
             )
@@ -199,25 +194,18 @@ fun AlbumDetailScreen(
                         enabled = selection.isNotEmpty(),
                         icon = { c, w -> drawShare(c, w) },
                     ) {
-                        context.startActivity(MediaActions.shareIntent(selectedUris()))
+                        context.startActivity(MediaActions.shareIntent(vm.selectedUris()))
                     },
                     SelectionAction(
                         "Delete",
                         enabled = selection.isNotEmpty(),
                         icon = { c, w -> drawTrash(c, w) },
                     ) {
-                        val uris = selectedUris()
+                        val uris = vm.selectedUris()
                         if (MediaActions.canUseSystemTrash()) {
-                            trashLauncher.launch(
-                                IntentSenderRequest.Builder(
-                                    MediaActions.trashRequest(context.contentResolver, uris).intentSender
-                                ).build()
-                            )
+                            systemTrashRunner.start(uris)
                         } else {
-                            scope.launch {
-                                MediaActions.deleteDirect(context, uris)
-                                vm.clearSelection()
-                            }
+                            legacyTrashRunner.start(uris)
                         }
                     },
                 )

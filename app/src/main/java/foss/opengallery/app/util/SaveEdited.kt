@@ -16,6 +16,7 @@ import foss.opengallery.app.ui.screens.editor.EditState
 import foss.opengallery.app.ui.screens.editor.StickerKind
 import foss.opengallery.app.ui.screens.editor.ToneKey
 import foss.opengallery.app.ui.screens.editor.ToneMatrix
+import foss.opengallery.app.ui.screens.editor.straightenScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,17 +34,31 @@ object SaveEdited {
         withContext(Dispatchers.Default) {
             var bitmap = source
 
-            // 1) Geometry: straighten -> rotate90/flip -> crop.
-            if (state.straighten != 0f) {
-                val m = android.graphics.Matrix().apply { postRotate(state.straighten) }
-                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
-            }
-            if (state.rotate90 != 0 || state.flipHorizontal) {
+            // 1) Geometry: straighten + flip + rotate90 in one pass, then the
+            //    straighten zoom-crop (same factor the preview shows, so no
+            //    black wedges are baked in), then the user crop.
+            val srcW = bitmap.width
+            val srcH = bitmap.height
+            if (state.straighten != 0f || state.rotate90 != 0 || state.flipHorizontal) {
                 val m = android.graphics.Matrix().apply {
+                    postRotate(state.straighten)
                     if (state.flipHorizontal) postScale(-1f, 1f)
                     postRotate(90f * state.rotate90)
                 }
-                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
+                bitmap = Bitmap.createBitmap(bitmap, 0, 0, srcW, srcH, m, true)
+            }
+            if (state.straighten != 0f) {
+                val k = straightenScale(srcW.toFloat(), srcH.toFloat(), state.straighten)
+                var iw = (srcW / k).toInt()
+                var ih = (srcH / k).toInt()
+                if (state.rotate90 % 2 == 1) {
+                    val t = iw; iw = ih; ih = t
+                }
+                iw = iw.coerceIn(1, bitmap.width)
+                ih = ih.coerceIn(1, bitmap.height)
+                bitmap = Bitmap.createBitmap(
+                    bitmap, (bitmap.width - iw) / 2, (bitmap.height - ih) / 2, iw, ih
+                )
             }
             if (state.crop != androidx.compose.ui.geometry.Rect(0f, 0f, 1f, 1f)) {
                 val left = (state.crop.left * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)

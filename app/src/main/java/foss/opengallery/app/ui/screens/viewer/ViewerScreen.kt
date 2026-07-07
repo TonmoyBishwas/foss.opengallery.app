@@ -106,9 +106,16 @@ fun ViewerScreen(
     var pageZoomed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var detailsFor by remember { mutableStateOf<MediaItem?>(null) }
+    // Bumped after actions that change the current row (favourite) so the
+    // produceState below re-reads it.
+    var itemTick by remember { mutableStateOf(0) }
+
+    // A deleted-while-zoomed page leaves userScrollEnabled stuck off unless
+    // the flag resets when the visible page changes.
+    LaunchedEffect(pagerState.currentPage) { pageZoomed = false }
 
     // Current item for the action bar / menus.
-    val currentItem by produceState<MediaItem?>(null, pagerState.currentPage, count) {
+    val currentItem by produceState<MediaItem?>(null, pagerState.currentPage, count, itemTick) {
         value = vm.itemAt(pagerState.currentPage)
     }
 
@@ -122,13 +129,48 @@ fun ViewerScreen(
     }
     val favLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { }
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            currentItem?.let { vm.invalidateItem(it.id) }
+            itemTick++
+        }
+    }
+    // Locked-folder moves on API 29: consent only grants access — the
+    // delete of the vaulted original must be retried after RESULT_OK.
+    var pendingLockedDelete by remember { mutableStateOf<MediaItem?>(null) }
+    val lockedDeleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val pending = pendingLockedDelete
+        pendingLockedDelete = null
+        if (result.resultCode == android.app.Activity.RESULT_OK && pending != null) {
+            scope.launch {
+                if (MediaActions.deleteDirect(context, listOf(pending.uri)) == null) {
+                    vm.onDeleted(pending.id)
+                    if (vm.count.value == 0) onBack()
+                }
+            }
+        }
+    }
+    // API 26–29: deletes go through the app recycle bin (hard rule).
+    val legacyTrashRunner =
+        foss.opengallery.app.ui.components.rememberLegacyTrashRunner { trashed ->
+            trashed.forEach { uri ->
+                runCatching { android.content.ContentUris.parseId(uri) }
+                    .getOrNull()
+                    ?.let { vm.onDeleted(it) }
+            }
+            if (vm.count.value == 0) onBack()
+        }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = !pageZoomed,
             key = { page -> vm.idAt(page) ?: page.toLong() },
+            // Pre-compose neighbours so the next image is already decoding
+            // before the swipe starts.
+            beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             val item by produceState<MediaItem?>(null, page) { value = vm.itemAt(page) }
@@ -177,9 +219,11 @@ fun ViewerScreen(
                         add(PopupEntry("Copy to clipboard") {
                             currentItem?.let { copyToClipboard(context, it) }
                         })
-                        add(PopupEntry("Set as wallpaper") {
-                            currentItem?.let { setAsWallpaper(context, it) }
-                        })
+                        if (currentItem?.isVideo != true) {
+                            add(PopupEntry("Set as wallpaper") {
+                                currentItem?.let { setAsWallpaper(context, it) }
+                            })
+                        }
                         add(PopupEntry("Move to Locked folder") {
                             val item = currentItem ?: return@PopupEntry
                             scope.launch {
@@ -203,14 +247,24 @@ fun ViewerScreen(
                                         ).build()
                                     )
                                 } else {
-                                    MediaActions.deleteDirect(context, listOf(item.uri))
-                                    vm.onDeleted(item.id)
+                                    val sender =
+                                        MediaActions.deleteDirect(context, listOf(item.uri))
+                                    if (sender != null) {
+                                        pendingLockedDelete = item
+                                        lockedDeleteLauncher.launch(
+                                            IntentSenderRequest.Builder(sender).build()
+                                        )
+                                    } else {
+                                        vm.onDeleted(item.id)
+                                    }
                                 }
                             }
                         })
-                            add(PopupEntry("Print") {
-                                currentItem?.let { printImage(context, it) }
-                            })
+                            if (currentItem?.isVideo != true) {
+                                add(PopupEntry("Print") {
+                                    currentItem?.let { printImage(context, it) }
+                                })
+                            }
                         },
                     )
                 }
@@ -243,16 +297,17 @@ fun ViewerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Favourite
-                    val interaction = remember { MutableInteractionSource() }
-                    Canvas(
-                        Modifier
-                            .clickable(
-                                interactionSource = interaction,
-                                indication = null,
-                            ) {
-                                val item = currentItem ?: return@clickable
-                                if (MediaActions.canUseSystemTrash()) {
+                    // Favourite — system favourites only exist on 30+; hide
+                    // the heart below that instead of showing a dead control.
+                    if (MediaActions.canUseSystemTrash()) {
+                        val interaction = remember { MutableInteractionSource() }
+                        Canvas(
+                            Modifier
+                                .clickable(
+                                    interactionSource = interaction,
+                                    indication = null,
+                                ) {
+                                    val item = currentItem ?: return@clickable
                                     favLauncher.launch(
                                         IntentSenderRequest.Builder(
                                             MediaActions.favoriteRequest(
@@ -263,16 +318,16 @@ fun ViewerScreen(
                                         ).build()
                                     )
                                 }
-                            }
-                            .padding(14.dp)
-                            .size(26.dp)
-                    ) {
-                        drawHeart(
-                            color = if (currentItem?.isFavorite == true) OgColors.FavouriteHeart
-                            else OgColors.TextPrimary,
-                            filled = currentItem?.isFavorite == true,
-                            strokeWidth = 2.2.dp.toPx(),
-                        )
+                                .padding(14.dp)
+                                .size(26.dp)
+                        ) {
+                            drawHeart(
+                                color = if (currentItem?.isFavorite == true) OgColors.FavouriteHeart
+                                else OgColors.TextPrimary,
+                                filled = currentItem?.isFavorite == true,
+                                strokeWidth = 2.2.dp.toPx(),
+                            )
+                        }
                     }
                     ViewerIconAction({ c, w -> drawPencil(c, w) }) {
                         currentItem?.let { item ->
@@ -296,14 +351,27 @@ fun ViewerScreen(
                                     .container
                             val strip = container.settingsRepository.settings
                                 .firstOrNull()?.stripLocationOnShare == true
-                            val intent = if (strip && !item.isVideo) {
-                                foss.opengallery.app.util.StripShare.buildIntent(
+                            if (strip && !item.isVideo) {
+                                val intent = foss.opengallery.app.util.StripShare.buildIntent(
                                     context, listOf(item.uri)
                                 )
-                            } else null
-                            context.startActivity(
-                                intent ?: MediaActions.shareIntent(listOf(item.uri), item.mimeType)
-                            )
+                                // Never fall back to the unstripped original —
+                                // that silently leaks the location the user
+                                // asked to remove.
+                                if (intent != null) {
+                                    context.startActivity(intent)
+                                } else {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Couldn't remove location data — not shared",
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            } else {
+                                context.startActivity(
+                                    MediaActions.shareIntent(listOf(item.uri), item.mimeType)
+                                )
+                            }
                         }
                     }
                     ViewerIconAction({ c, w -> drawTrash(c, w) }) deleteAction@{
@@ -317,11 +385,7 @@ fun ViewerScreen(
                                 ).build()
                             )
                         } else {
-                            scope.launch {
-                                MediaActions.deleteDirect(context, listOf(item.uri))
-                                vm.onDeleted(item.id)
-                                if (vm.count.value == 0) onBack()
-                            }
+                            legacyTrashRunner.start(listOf(item.uri))
                         }
                     }
                 }

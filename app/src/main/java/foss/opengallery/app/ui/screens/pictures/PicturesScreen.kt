@@ -1,9 +1,5 @@
 package foss.opengallery.app.ui.screens.pictures
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -27,7 +23,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -39,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.setValue
 import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
 import foss.opengallery.app.data.MediaActions
@@ -61,7 +57,6 @@ import foss.opengallery.app.ui.ogViewModel
 import foss.opengallery.app.ui.permissions.MediaAccessGate
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
-import kotlinx.coroutines.launch
 
 /**
  * The Pictures tab: hero title, date-grouped paged timeline, pinch density,
@@ -84,7 +79,6 @@ fun PicturesScreen(
         val selection by vm.selection.collectAsState()
         val selectionMode by vm.selectionMode.collectAsState()
         val gridState = rememberLazyGridState()
-        val scope = rememberCoroutineScope()
         val context = LocalContext.current
         var menuOpen by remember { mutableStateOf(false) }
 
@@ -93,14 +87,13 @@ fun PicturesScreen(
             onSelectionModeChange(selectionMode)
         }
 
-        val trashLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.StartIntentSenderForResult()
-        ) { vm.clearSelection() }
-
-        fun selectedUris(): List<Uri> = (0 until cells.itemCount).mapNotNull { i ->
-            val cell = cells.peek(i) as? TimelineCell.Media ?: return@mapNotNull null
-            if (cell.item.id in selection) cell.item.uri else null
-        }
+        // 30+: system trash in binder-safe batches. 26–29: the app recycle
+        // bin, per the recycle-bin hard rule — never straight to permanent
+        // deletion.
+        val systemTrashRunner =
+            foss.opengallery.app.ui.components.rememberSystemTrashRunner { vm.clearSelection() }
+        val legacyTrashRunner =
+            foss.opengallery.app.ui.components.rememberLegacyTrashRunner { vm.clearSelection() }
 
         val heroCollapsed by remember {
             derivedStateOf { gridState.firstVisibleItemIndex > 0 }
@@ -123,6 +116,20 @@ fun PicturesScreen(
                     },
                 )
             }
+            // Anchored outside the lazy grid: the hero item (the old anchor)
+            // is disposed once scrolled away, which made ⋮ dead from the
+            // compact bar. See docs/PITFALLS.md on menu anchoring.
+            Box(Modifier.align(Alignment.End).padding(end = 8.dp)) {
+                PicturesOverflowMenu(
+                    expanded = menuOpen,
+                    onDismiss = { menuOpen = false },
+                    onEdit = { vm.enterSelection() },
+                    onSelectAll = {
+                        vm.enterSelection()
+                        vm.selectAll()
+                    },
+                )
+            }
 
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 LazyVerticalGrid(
@@ -134,40 +141,23 @@ fun PicturesScreen(
                 ) {
                     if (!selectionMode) {
                         item(key = "hero", span = { GridItemSpan(maxLineSpan) }) {
-                            Box {
-                                HeroHeader(
-                                    title = "Pictures",
-                                    heroHeight = 340.dp,
-                                    actions = listOf(
-                                        HeaderAction.MultiView,
-                                        HeaderAction.Search,
-                                        HeaderAction.More,
-                                    ),
-                                    onAction = { action ->
-                                        when (action) {
-                                            HeaderAction.Search -> onOpenSearch()
-                                            HeaderAction.More -> menuOpen = true
-                                            HeaderAction.MultiView -> vm.pinchOut()
-                                            else -> {}
-                                        }
-                                    },
-                                )
-                                Box(Modifier.align(Alignment.BottomEnd)) {
-                                    PicturesOverflowMenu(
-                                        expanded = menuOpen,
-                                        onDismiss = { menuOpen = false },
-                                        onEdit = { vm.enterSelection() },
-                                        onSelectAll = {
-                                            vm.enterSelection()
-                                            vm.selectAll(
-                                                (0 until cells.itemCount).mapNotNull { i ->
-                                                    (cells.peek(i) as? TimelineCell.Media)?.item?.id
-                                                }
-                                            )
-                                        },
-                                    )
-                                }
-                            }
+                            HeroHeader(
+                                title = "Pictures",
+                                heroHeight = 340.dp,
+                                actions = listOf(
+                                    HeaderAction.MultiView,
+                                    HeaderAction.Search,
+                                    HeaderAction.More,
+                                ),
+                                onAction = { action ->
+                                    when (action) {
+                                        HeaderAction.Search -> onOpenSearch()
+                                        HeaderAction.More -> menuOpen = true
+                                        HeaderAction.MultiView -> vm.pinchOut()
+                                        else -> {}
+                                    }
+                                },
+                            )
                         }
                     }
 
@@ -184,6 +174,9 @@ fun PicturesScreen(
                                 is TimelineCell.Header -> GridItemSpan(maxLineSpan)
                                 else -> GridItemSpan(1)
                             }
+                        },
+                        contentType = cells.itemContentType { cell ->
+                            if (cell is TimelineCell.Header) "header" else "media"
                         },
                     ) { index ->
                         when (val cell = cells[index]) {
@@ -228,26 +221,18 @@ fun PicturesScreen(
                             enabled = selection.isNotEmpty(),
                             icon = { c, w -> drawShare(c, w) },
                         ) {
-                            context.startActivity(MediaActions.shareIntent(selectedUris()))
+                            context.startActivity(MediaActions.shareIntent(vm.selectedUris()))
                         },
                         SelectionAction(
                             "Delete",
                             enabled = selection.isNotEmpty(),
                             icon = { c, w -> drawTrash(c, w) },
                         ) {
-                            val uris = selectedUris()
+                            val uris = vm.selectedUris()
                             if (MediaActions.canUseSystemTrash()) {
-                                trashLauncher.launch(
-                                    IntentSenderRequest.Builder(
-                                        MediaActions.trashRequest(context.contentResolver, uris)
-                                            .intentSender
-                                    ).build()
-                                )
+                                systemTrashRunner.start(uris)
                             } else {
-                                scope.launch {
-                                    MediaActions.deleteDirect(context, uris)
-                                    vm.clearSelection()
-                                }
+                                legacyTrashRunner.start(uris)
                             }
                         },
                     )

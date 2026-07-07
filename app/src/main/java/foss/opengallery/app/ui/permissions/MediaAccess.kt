@@ -68,6 +68,12 @@ fun mediaPermissionsToRequest(): Array<String> = when {
         Manifest.permission.READ_MEDIA_IMAGES,
         Manifest.permission.READ_MEDIA_VIDEO,
     )
+    // 26–28 also need WRITE for editor save / delete / legacy trash; access
+    // gating still keys off READ alone.
+    Build.VERSION.SDK_INT <= 28 -> arrayOf(
+        @Suppress("DEPRECATION") Manifest.permission.READ_EXTERNAL_STORAGE,
+        @Suppress("DEPRECATION") Manifest.permission.WRITE_EXTERNAL_STORAGE,
+    )
     else -> arrayOf(@Suppress("DEPRECATION") Manifest.permission.READ_EXTERNAL_STORAGE)
 }
 

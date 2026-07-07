@@ -1,9 +1,11 @@
 package foss.opengallery.app.data
 
 import android.app.PendingIntent
+import android.app.RecoverableSecurityException
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -18,14 +20,18 @@ import kotlinx.coroutines.withContext
  */
 object MediaActions {
 
+    /** Sharing more uris than this overflows the 1 MB binder transaction. */
+    const val MAX_SHARE_ITEMS = 500
+
     fun shareIntent(uris: List<Uri>, mimeHint: String = "*/*"): Intent {
-        val intent = if (uris.size == 1) {
+        val bounded = uris.take(MAX_SHARE_ITEMS)
+        val intent = if (bounded.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
-                putExtra(Intent.EXTRA_STREAM, uris.first())
+                putExtra(Intent.EXTRA_STREAM, bounded.first())
             }
         } else {
             Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(bounded))
             }
         }
         return intent.apply {
@@ -47,16 +53,24 @@ object MediaActions {
         MediaStore.createFavoriteRequest(resolver, uris, favorite)
 
     /**
-     * Direct delete for API 26–29. On 29 a RecoverableSecurityException may
-     * be thrown for items we don't own; callers surface its action intent.
+     * Direct delete for API 26–29. On 29, deleting an item we don't own
+     * throws RecoverableSecurityException — the returned IntentSender must
+     * be launched so the user can consent, then the delete retried. Returns
+     * null when everything was deleted (or skipped) without needing consent.
      */
-    suspend fun deleteDirect(context: Context, uris: List<Uri>): Int =
+    suspend fun deleteDirect(context: Context, uris: List<Uri>): IntentSender? =
         withContext(Dispatchers.IO) {
-            var deleted = 0
             for (uri in uris) {
-                deleted += context.contentResolver.delete(uri, null, null)
+                try {
+                    context.contentResolver.delete(uri, null, null)
+                } catch (e: SecurityException) {
+                    if (Build.VERSION.SDK_INT >= 29 && e is RecoverableSecurityException) {
+                        return@withContext e.userAction.actionIntent.intentSender
+                    }
+                    // 26–28 without write access: skip instead of crashing.
+                }
             }
-            deleted
+            null
         }
 
     fun editIntent(uri: Uri, mimeType: String): Intent =

@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -56,20 +58,27 @@ fun androidx.compose.foundation.layout.BoxScope.FastScrubber(
     var trackHeightPx by remember { mutableFloatStateOf(1f) }
     var label by remember { mutableStateOf<String?>(null) }
 
-    // Show while the grid scrolls, fade out shortly after it stops.
-    LaunchedEffect(gridState.isScrollInProgress, dragging) {
-        if (gridState.isScrollInProgress || dragging) {
-            visible = true
-        } else {
-            delay(1400)
-            visible = false
-        }
+    // snapshotFlow instead of effect keys: keying on firstVisibleItemIndex /
+    // isScrollInProgress recomposed the whole scrubber on every scrolled row.
+    LaunchedEffect(Unit) {
+        snapshotFlow { gridState.isScrollInProgress || dragging }
+            .collectLatest { active ->
+                if (active) {
+                    visible = true
+                } else {
+                    delay(1400)
+                    visible = false
+                }
+            }
     }
     // Track position follows the real scroll when not dragging.
-    LaunchedEffect(gridState.firstVisibleItemIndex, itemCount, dragging) {
-        if (!dragging && itemCount > 0) {
-            fraction = gridState.firstVisibleItemIndex.toFloat() / itemCount
-        }
+    LaunchedEffect(itemCount) {
+        snapshotFlow { gridState.firstVisibleItemIndex to dragging }
+            .collect { (index, isDragging) ->
+                if (!isDragging && itemCount > 0) {
+                    fraction = index.toFloat() / itemCount
+                }
+            }
     }
 
     val density = LocalDensity.current

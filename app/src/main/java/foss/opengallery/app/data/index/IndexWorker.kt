@@ -22,6 +22,7 @@ import foss.opengallery.app.data.db.FaceEntity
 import foss.opengallery.app.data.db.MediaIndexEntity
 import foss.opengallery.app.data.db.PersonEntity
 import foss.opengallery.app.data.model.MediaItem
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import java.util.concurrent.TimeUnit
 
@@ -39,6 +40,10 @@ class IndexWorker(
 
     override suspend fun doWork(): Result {
         val app = applicationContext as OpenGalleryApp
+        // The settings toggle must actually stop indexing (privacy promise).
+        if (!app.container.settingsRepository.settings.first().indexingEnabled) {
+            return Result.success()
+        }
         val db = app.container.database
         val resolver = applicationContext.contentResolver
 

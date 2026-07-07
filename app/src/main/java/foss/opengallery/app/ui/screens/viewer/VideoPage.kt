@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +20,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem as ExoMediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -41,8 +45,10 @@ fun VideoPage(
     val context = LocalContext.current
     var playing by remember { mutableStateOf(false) }
 
-    // Kill playback when swiped away.
-    if (!isCurrentPage && playing) playing = false
+    // Kill playback when swiped away (effect, not a write during composition).
+    LaunchedEffect(isCurrentPage) {
+        if (!isCurrentPage) playing = false
+    }
 
     Box(modifier.fillMaxSize().clickable { onTap() }, contentAlignment = Alignment.Center) {
         if (playing) {
@@ -53,8 +59,18 @@ fun VideoPage(
                     playWhenReady = true
                 }
             }
-            DisposableEffect(Unit) {
-                onDispose { player.release() }
+            // Pause when the app is backgrounded — otherwise audio keeps
+            // playing until the composable disposes.
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(player) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_PAUSE) player.pause()
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                    player.release()
+                }
             }
             AndroidView(
                 factory = { ctx ->

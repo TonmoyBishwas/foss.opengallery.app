@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.1.0] — 2026-07-07
+
+Large performance and bug-fix release: deep-scroll lag is gone, and a broad
+audit fixed crashes, data-loss paths and dead UI across the app.
+
+### Performance
+- MediaStore page queries now use real SQL LIMIT/OFFSET (Bundle query API on
+  Android 11+, sort-clause fallback on 8–10). Scrolling deep into a large
+  album/timeline was O(n²) cursor walking before — this was the "lags like
+  crazy" bug on big libraries
+- MediaStore change notifications are debounced (700 ms); bursts of provider
+  notifications no longer restart page loads and album scans mid-scroll
+- Albums tab refresh dropped from ~18 MediaStore queries per change to 7,
+  and bucket scanning no longer materializes a full row object per photo
+- Fast scrubber no longer recomposes on every scrolled row (snapshotFlow)
+- Timeline grid supplies contentType so headers/thumbs recycle correctly
+- Viewer pre-composes neighbouring pages — no more loading flash per swipe
+- Tab switches keep each tab's scroll position instead of resetting
+
+### Fixed
+- Paging refresh math could leave gaps or duplicate items after a
+  mid-scroll library change (duplicate-key crash); page keys are now aligned
+  and all sort orders end in a stable _ID tiebreaker
+- Custom albums showed the entire library instead of their members (both in
+  the album grid and the viewer opened from one)
+- "Select all" only selected the ~240 already-loaded items; selection now
+  covers the whole album/library, and share/delete act on all of it
+- Pictures/Albums ⋮ menu was dead after scrolling (anchor lived inside the
+  scrolled-away hero header)
+- Deleting on Android 10 items not owned by the app crashed; the system
+  consent prompt is now shown and the delete retried
+- Favourite heart in the viewer updates immediately after toggling (and is
+  hidden on Android 8–10 where system favourites don't exist)
+- Deleting while zoomed no longer permanently locks viewer swiping
+- Videos: background the app and playback now pauses; "Set as wallpaper"
+  and "Print" are no longer offered for videos
+- Android 8–10 deletes now really go through the app recycle bin
+  (the 30-day bin existed but was never wired to the delete buttons), with
+  the Android 10 per-item consent flow handled and retried correctly
+- Recycle bin restore can no longer destroy the only copy of a photo when
+  the write fails, and restoring a photo from Download/ no longer crashes
+  on Android 10
+- "Remove location data when sharing" is now fail-safe: if EXIF stripping
+  isn't possible the app re-encodes the image without metadata, and never
+  falls back to silently sharing the original with GPS intact
+- Huge selections no longer crash share/delete (binder transaction limit):
+  shares are capped and system-trash requests are batched
+- Editor saves scale their working resolution to the device's memory
+  instead of a fixed 4096 px cap (big-heap devices keep more detail;
+  small-heap devices no longer risk out-of-memory crashes)
+- Editor: crop presets now produce true pixel aspect ratios, straighten no
+  longer bakes black wedges into the saved copy, drawn decorations land
+  exactly where previewed on letterboxed photos, and one slider gesture is
+  one undo step
+- People/city grids with 1000+ photos keep a global newest-first order
+- Locked Folder restore uses the correct MediaStore API on Android 8–9
+
 ## [1.0.2] — 2026-07-04
 
 ### Fixed

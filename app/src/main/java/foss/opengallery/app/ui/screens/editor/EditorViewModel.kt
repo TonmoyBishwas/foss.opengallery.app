@@ -101,17 +101,49 @@ class EditorViewModel(
             ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
             ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> {
+                matrix.postRotate(180f); matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.postRotate(90f); matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.postRotate(-90f); matrix.postScale(-1f, 1f)
+            }
             else -> return bitmap
         }
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
+    private var gestureBase: EditState? = null
+
     /** Applies a state mutation, recording undo history. */
     fun update(transform: (EditState) -> EditState) {
+        gestureBase = null
         undoStack.addLast(_state.value)
         if (undoStack.size > MAX_HISTORY) undoStack.removeFirst()
         redoStack.clear()
         _state.value = transform(_state.value)
+        refreshHistoryFlags()
+    }
+
+    /**
+     * Mid-gesture mutation (slider drag, straighten ruler): applies without
+     * recording history so one gesture doesn't flood the undo stack.
+     */
+    fun updateLive(transform: (EditState) -> EditState) {
+        if (gestureBase == null) gestureBase = _state.value
+        _state.value = transform(_state.value)
+    }
+
+    /** Commits the gesture started by [updateLive] as a single undo entry. */
+    fun commitGesture() {
+        val base = gestureBase ?: return
+        gestureBase = null
+        if (base == _state.value) return
+        undoStack.addLast(base)
+        if (undoStack.size > MAX_HISTORY) undoStack.removeFirst()
+        redoStack.clear()
         refreshHistoryFlags()
     }
 
@@ -148,8 +180,29 @@ class EditorViewModel(
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
+                    // Bounded decode: a 108 MP source at ARGB_8888 is ~430 MB,
+                    // and the render pipeline keeps 2–3 geometry copies alive
+                    // at once. Budget from the actual heap instead of a fixed
+                    // edge so big-heap devices keep more resolution (a 512 MB
+                    // heap preserves ~20 MP; the old fixed 4096 cap forced
+                    // every 50 MP photo down to ~12 MP).
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    resolver.openInputStream(sourceUri)?.use {
+                        BitmapFactory.decodeStream(it, null, bounds)
+                    }
+                    val budgetBytes = (Runtime.getRuntime().maxMemory() / 6)
+                        .coerceAtMost(256L * 1024 * 1024)
+                    var sample = 1
+                    while (
+                        (bounds.outWidth.toLong() / sample) *
+                        (bounds.outHeight.toLong() / sample) * 4L > budgetBytes
+                    ) {
+                        sample *= 2
+                    }
                     val full = resolver.openInputStream(sourceUri)?.use {
-                        BitmapFactory.decodeStream(it)
+                        BitmapFactory.decodeStream(
+                            it, null, BitmapFactory.Options().apply { inSampleSize = sample }
+                        )
                     } ?: return@runCatching null
                     val oriented = applyExifOrientation(full)
                     val rendered = SaveEdited.render(oriented, _state.value)

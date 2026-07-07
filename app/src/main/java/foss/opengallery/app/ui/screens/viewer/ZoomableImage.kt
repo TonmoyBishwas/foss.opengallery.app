@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +39,12 @@ fun ZoomableImage(
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // If this page is removed while zoomed (delete-while-zoomed), the parent
+    // never hears the zoom end and page swiping stays locked — release it.
+    DisposableEffect(Unit) {
+        onDispose { onZoomChanged(false) }
+    }
 
     fun clampOffset(raw: Offset, s: Float): Offset {
         if (s <= 1f) return Offset.Zero

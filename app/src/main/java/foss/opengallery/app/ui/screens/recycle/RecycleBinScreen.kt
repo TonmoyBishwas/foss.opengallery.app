@@ -16,7 +16,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -93,6 +95,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
     val systemItems by vm.systemItems.collectAsState()
     val legacyItems by vm.legacyItems.collectAsState()
     var menuOpen by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf<TrashedItemEntity?>(null) }
 
     val consentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -183,11 +186,39 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                         model = java.io.File(entity.storedPath),
                         daysLeft = daysLeft.coerceAtLeast(0),
                         onClick = { vm.legacyRestore(entity) },
-                        onLongClick = { vm.legacyDelete(entity) },
+                        onLongClick = { confirmDelete = entity },
                     )
                 }
             }
         }
+    }
+
+    confirmDelete?.let { entity ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            containerColor = OgColors.SurfacePopup,
+            title = {
+                Text("Delete permanently?", style = OgType.SectionHeader, color = OgColors.TextPrimary)
+            },
+            text = {
+                Text(
+                    "“${entity.originalName}” will be deleted forever. It cannot be recovered.",
+                    style = OgType.Body,
+                    color = OgColors.TextSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.legacyDelete(entity)
+                    confirmDelete = null
+                }) { Text("Delete", color = OgColors.AccentBlue) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = null }) {
+                    Text("Cancel", color = OgColors.TextSecondary)
+                }
+            },
+        )
     }
 }
 

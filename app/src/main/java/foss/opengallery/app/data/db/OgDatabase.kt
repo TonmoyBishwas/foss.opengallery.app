@@ -5,12 +5,16 @@ import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Fts4
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -100,7 +104,7 @@ data class MediaIndexFtsEntity(
 )
 
 /** One detected face: its embedding and the person cluster it belongs to. */
-@Entity(tableName = "face")
+@Entity(tableName = "face", indices = [Index("personId"), Index("mediaId")])
 data class FaceEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val mediaId: Long,
@@ -244,7 +248,17 @@ interface CustomAlbumDao {
     suspend fun rename(id: Long, name: String)
 
     @Query("DELETE FROM custom_album WHERE id = :id")
-    suspend fun delete(id: Long)
+    suspend fun deleteAlbumRow(id: Long)
+
+    @Query("DELETE FROM custom_album_item WHERE albumId = :id")
+    suspend fun deleteAlbumItems(id: Long)
+
+    /** Deleting an album must not orphan its membership rows. */
+    @Transaction
+    suspend fun delete(id: Long) {
+        deleteAlbumItems(id)
+        deleteAlbumRow(id)
+    }
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun addItems(items: List<CustomAlbumItemEntity>)
@@ -272,7 +286,7 @@ interface CustomAlbumDao {
         FaceEntity::class,
         PersonEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class OgDatabase : RoomDatabase() {
@@ -285,8 +299,17 @@ abstract class OgDatabase : RoomDatabase() {
     abstract fun faceDao(): FaceDao
 
     companion object {
+        /** v5: indices on face(personId) / face(mediaId) — hot clustering paths. */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_face_personId` ON `face` (`personId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_face_mediaId` ON `face` (`mediaId`)")
+            }
+        }
+
         fun build(context: Context): OgDatabase =
             Room.databaseBuilder(context, OgDatabase::class.java, "opengallery.db")
+                .addMigrations(MIGRATION_4_5)
                 .fallbackToDestructiveMigration(dropAllTables = false)
                 .build()
     }

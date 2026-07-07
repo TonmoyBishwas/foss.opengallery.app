@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -64,6 +65,8 @@ import foss.opengallery.app.ui.ogViewModel
 import foss.opengallery.app.ui.theme.OgColors
 import foss.opengallery.app.ui.theme.OgType
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val EditorAccent = Color(0xFFF7CE46)
 private val EditorChip = Color(0xFF26262B)
@@ -143,9 +146,17 @@ fun EditorScreen(
 
         // Section-specific controls.
         when (section) {
-            EditorSection.Transform -> TransformControls(state, vm::update)
-            EditorSection.Filters -> FilterControls(preview, state, vm::update)
-            EditorSection.Tone -> ToneControls(state, vm::update)
+            EditorSection.Transform -> TransformControls(
+                state = state,
+                baseAspect = preview?.let { it.width.toFloat() / it.height } ?: 1f,
+                onUpdate = vm::update,
+                onUpdateLive = vm::updateLive,
+                onCommit = vm::commitGesture,
+            )
+            EditorSection.Filters -> FilterControls(
+                preview, state, vm::update, vm::updateLive, vm::commitGesture,
+            )
+            EditorSection.Tone -> ToneControls(state, vm::updateLive, vm::commitGesture)
             EditorSection.Decorate -> DecorateControls(state, vm::update)
         }
 
@@ -241,6 +252,12 @@ private fun EditorPreview(
     val composeFilter = remember(androidMatrix) {
         ColorFilter.colorMatrix(ComposeColorMatrix(androidMatrix.array.copyOf()))
     }
+    // Where the fitted image actually sits inside the container. Overlay
+    // coords are normalized against this rect, not the whole container, so
+    // strokes land in the same spot in the saved file (no letterbox drift).
+    val fitRect = remember(canvasSize, bitmap, state.rotate90) {
+        fittedImageRect(canvasSize, bitmap.width, bitmap.height, state.rotate90)
+    }
 
     Box(
         Modifier
@@ -248,20 +265,20 @@ private fun EditorPreview(
             .onSizeChanged { canvasSize = it }
             .then(
                 if (section == EditorSection.Decorate) {
-                    Modifier.pointerInput(drawColor) {
+                    Modifier.pointerInput(drawColor, fitRect) {
+                        val r = fitRect ?: androidx.compose.ui.geometry.Rect(
+                            0f, 0f, size.width.toFloat(), size.height.toFloat()
+                        )
+                        fun norm(p: Offset) = Offset(
+                            ((p.x - r.left) / r.width).coerceIn(0f, 1f),
+                            ((p.y - r.top) / r.height).coerceIn(0f, 1f),
+                        )
                         detectDragGestures(
                             onDragStart = { start ->
-                                activeStroke = listOf(
-                                    Offset(start.x / size.width, start.y / size.height)
-                                )
+                                activeStroke = listOf(norm(start))
                             },
                             onDrag = { change, _ ->
-                                activeStroke = activeStroke?.plus(
-                                    Offset(
-                                        change.position.x / size.width,
-                                        change.position.y / size.height,
-                                    )
-                                )
+                                activeStroke = activeStroke?.plus(norm(change.position))
                             },
                             onDragEnd = {
                                 val points = activeStroke
@@ -294,14 +311,32 @@ private fun EditorPreview(
                 .fillMaxSize()
                 .graphicsLayer {
                     rotationZ = state.straighten + 90f * state.rotate90
-                    scaleX = if (state.flipHorizontal) -1f else 1f
+                    // Same zoom the save applies, so the wedge crop is visible
+                    // live; plus a re-fit when a 90° turn swaps the aspect.
+                    var s = straightenScale(
+                        bitmap.width.toFloat(), bitmap.height.toFloat(), state.straighten
+                    )
+                    if (state.rotate90 % 2 == 1 && canvasSize != IntSize.Zero) {
+                        val cw = canvasSize.width.toFloat()
+                        val ch = canvasSize.height.toFloat()
+                        val bw = bitmap.width.toFloat()
+                        val bh = bitmap.height.toFloat()
+                        val base = minOf(cw / bw, ch / bh)
+                        if (base > 0f) s *= minOf(cw / bh, ch / bw) / base
+                    }
+                    scaleX = (if (state.flipHorizontal) -1f else 1f) * s
+                    scaleY = s
                 },
         )
-        // Overlay strokes/texts/stickers preview.
+        // Overlay strokes/texts/stickers preview, drawn over the fitted rect.
         Canvas(Modifier.fillMaxSize()) {
+            val r = fitRect ?: androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)
             val native = drawContext.canvas.nativeCanvas
+            val checkpoint = native.save()
+            native.translate(r.left, r.top)
+            native.clipRect(0f, 0f, r.width, r.height)
             foss.opengallery.app.util.SaveEdited.drawOverlays(
-                native, size.width, size.height, state,
+                native, r.width, r.height, state,
             )
             // In-progress stroke.
             activeStroke?.let { points ->
@@ -314,17 +349,18 @@ private fun EditorPreview(
                             (drawColor.blue * 255).toInt(),
                         )
                         style = android.graphics.Paint.Style.STROKE
-                        strokeWidth = 0.012f * size.width
+                        strokeWidth = 0.012f * r.width
                         strokeCap = android.graphics.Paint.Cap.ROUND
                     }
                     val path = android.graphics.Path()
-                    path.moveTo(points.first().x * size.width, points.first().y * size.height)
+                    path.moveTo(points.first().x * r.width, points.first().y * r.height)
                     points.drop(1).forEach {
-                        path.lineTo(it.x * size.width, it.y * size.height)
+                        path.lineTo(it.x * r.width, it.y * r.height)
                     }
                     native.drawPath(path, paint)
                 }
             }
+            native.restoreToCount(checkpoint)
         }
         // Vignette live preview.
         val vignette = state.tone(ToneKey.Vignette)
@@ -344,6 +380,29 @@ private fun EditorPreview(
     }
 }
 
+/** ContentScale.Fit rect of the displayed image inside the container. */
+private fun fittedImageRect(
+    container: IntSize,
+    bitmapW: Int,
+    bitmapH: Int,
+    rotate90: Int,
+): androidx.compose.ui.geometry.Rect? {
+    if (container == IntSize.Zero || bitmapW <= 0 || bitmapH <= 0) return null
+    val cw = container.width.toFloat()
+    val ch = container.height.toFloat()
+    val (ew, eh) = if (rotate90 % 2 == 1) {
+        bitmapH.toFloat() to bitmapW.toFloat()
+    } else {
+        bitmapW.toFloat() to bitmapH.toFloat()
+    }
+    val s = minOf(cw / ew, ch / eh)
+    val w = ew * s
+    val h = eh * s
+    return androidx.compose.ui.geometry.Rect(
+        (cw - w) / 2f, (ch - h) / 2f, (cw + w) / 2f, (ch + h) / 2f
+    )
+}
+
 /** Aspect presets cycled by the pill button, like the reference "Free" chip. */
 private val AspectPresets = listOf(
     "Free" to null,
@@ -355,7 +414,13 @@ private val AspectPresets = listOf(
 
 /** Transform: flip / rotate / aspect pill + the straighten ruler dial. */
 @Composable
-private fun TransformControls(state: EditState, onUpdate: ((EditState) -> EditState) -> Unit) {
+private fun TransformControls(
+    state: EditState,
+    baseAspect: Float,
+    onUpdate: ((EditState) -> EditState) -> Unit,
+    onUpdateLive: ((EditState) -> EditState) -> Unit,
+    onCommit: () -> Unit,
+) {
     var aspectIndex by rememberSaveable { mutableStateOf(0) }
     Column(Modifier.fillMaxWidth()) {
         // Centered pill: flip · rotate · aspect.
@@ -385,7 +450,14 @@ private fun TransformControls(state: EditState, onUpdate: ((EditState) -> EditSt
                                 crop = if (aspect == null) {
                                     androidx.compose.ui.geometry.Rect(0f, 0f, 1f, 1f)
                                 } else {
-                                    centeredCrop(aspect)
+                                    // Crop coords apply after rotate90, where
+                                    // the pixel aspect may be swapped.
+                                    val src = if (it.rotate90 % 2 == 1) {
+                                        1f / baseAspect
+                                    } else {
+                                        baseAspect
+                                    }
+                                    centeredCrop(aspect, src)
                                 }
                             )
                         }
@@ -408,8 +480,9 @@ private fun TransformControls(state: EditState, onUpdate: ((EditState) -> EditSt
         StraightenRuler(
             value = state.straighten,
             onDragDegrees = { delta ->
-                onUpdate { it.copy(straighten = (it.straighten + delta).coerceIn(-45f, 45f)) }
+                onUpdateLive { it.copy(straighten = (it.straighten + delta).coerceIn(-45f, 45f)) }
             },
+            onDragFinished = onCommit,
         )
     }
 }
@@ -435,7 +508,11 @@ private fun PillIconButton(
  * indicator as you drag, exactly like the reference editor.
  */
 @Composable
-private fun StraightenRuler(value: Float, onDragDegrees: (Float) -> Unit) {
+private fun StraightenRuler(
+    value: Float,
+    onDragDegrees: (Float) -> Unit,
+    onDragFinished: () -> Unit,
+) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val pxPerDeg = with(density) { 6.dp.toPx() }
     Canvas(
@@ -444,7 +521,10 @@ private fun StraightenRuler(value: Float, onDragDegrees: (Float) -> Unit) {
             .height(46.dp)
             .padding(horizontal = 24.dp)
             .pointerInput(Unit) {
-                detectHorizontalDragGestures { change, dragAmount ->
+                detectHorizontalDragGestures(
+                    onDragEnd = onDragFinished,
+                    onDragCancel = onDragFinished,
+                ) { change, dragAmount ->
                     change.consume()
                     // Ruler follows the finger: dragging right lowers the angle.
                     onDragDegrees(-dragAmount / pxPerDeg)
@@ -485,12 +565,33 @@ private fun FilterControls(
     preview: android.graphics.Bitmap?,
     state: EditState,
     onUpdate: ((EditState) -> EditState) -> Unit,
+    onUpdateLive: ((EditState) -> EditState) -> Unit,
+    onCommit: () -> Unit,
 ) {
+    // Swatches don't need the 2048px preview; a thumbnail redraws 11× cheaper.
+    // Scaled off the main thread — a synchronous createScaledBitmap during
+    // composition dropped frames every time the Filters section was opened.
+    val swatchBitmap by produceState<android.graphics.Bitmap?>(null, preview) {
+        value = preview?.let {
+            val minSide = minOf(it.width, it.height)
+            if (minSide <= SWATCH_PX) it
+            else withContext(Dispatchers.Default) {
+                val s = SWATCH_PX.toFloat() / minSide
+                android.graphics.Bitmap.createScaledBitmap(
+                    it,
+                    (it.width * s).roundToInt().coerceAtLeast(1),
+                    (it.height * s).roundToInt().coerceAtLeast(1),
+                    true,
+                )
+            }
+        }
+    }
     Column(Modifier.fillMaxWidth()) {
         if (state.filterId != null) {
             Slider(
                 value = state.filterIntensity,
-                onValueChange = { v -> onUpdate { it.copy(filterIntensity = v) } },
+                onValueChange = { v -> onUpdateLive { it.copy(filterIntensity = v) } },
+                onValueChangeFinished = onCommit,
                 valueRange = 0f..100f,
                 colors = editorSliderColors(),
                 modifier = Modifier.padding(horizontal = 24.dp),
@@ -502,17 +603,19 @@ private fun FilterControls(
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp),
         ) {
-            FilterSwatch("Original", preview, null, state.filterId == null) {
+            FilterSwatch("Original", swatchBitmap, null, state.filterId == null) {
                 onUpdate { it.copy(filterId = null) }
             }
             Filters.presets.forEach { preset ->
-                FilterSwatch(preset.label, preview, preset, state.filterId == preset.id) {
+                FilterSwatch(preset.label, swatchBitmap, preset, state.filterId == preset.id) {
                     onUpdate { it.copy(filterId = preset.id, filterIntensity = 100f) }
                 }
             }
         }
     }
 }
+
+private const val SWATCH_PX = 128
 
 @Composable
 private fun FilterSwatch(
@@ -555,7 +658,11 @@ private fun FilterSwatch(
 
 /** Tone: the adjustment dial row + slider. */
 @Composable
-private fun ToneControls(state: EditState, onUpdate: ((EditState) -> EditState) -> Unit) {
+private fun ToneControls(
+    state: EditState,
+    onUpdateLive: ((EditState) -> EditState) -> Unit,
+    onCommit: () -> Unit,
+) {
     var selected by rememberSaveable { mutableStateOf(ToneKey.Brightness) }
     Column(Modifier.fillMaxWidth()) {
         Text(
@@ -567,8 +674,9 @@ private fun ToneControls(state: EditState, onUpdate: ((EditState) -> EditState) 
         Slider(
             value = state.tone(selected),
             onValueChange = { v ->
-                onUpdate { it.copy(tone = it.tone + (selected to v)) }
+                onUpdateLive { it.copy(tone = it.tone + (selected to v)) }
             },
+            onValueChangeFinished = onCommit,
             valueRange = if (selected == ToneKey.Vignette) 0f..100f else -100f..100f,
             colors = editorSliderColors(),
             modifier = Modifier.padding(horizontal = 24.dp),
@@ -655,15 +763,17 @@ private fun DecorateControls(state: EditState, onUpdate: ((EditState) -> EditSta
     }
 }
 
-/** Center crop of a given aspect within the unit square. */
-private fun centeredCrop(aspect: Float): androidx.compose.ui.geometry.Rect {
-    // The unit square maps to the image; approximate using square source.
-    return if (aspect >= 1f) {
-        val h = 1f / aspect
+/**
+ * Center crop in normalized source coords whose PIXEL aspect is [aspect],
+ * given the source's own pixel aspect [srcAspect] (both w/h).
+ */
+private fun centeredCrop(aspect: Float, srcAspect: Float): androidx.compose.ui.geometry.Rect {
+    val r = aspect / srcAspect
+    return if (r >= 1f) {
+        val h = 1f / r
         androidx.compose.ui.geometry.Rect(0f, (1f - h) / 2f, 1f, (1f + h) / 2f)
     } else {
-        val w = aspect
-        androidx.compose.ui.geometry.Rect((1f - w) / 2f, 0f, (1f + w) / 2f, 1f)
+        androidx.compose.ui.geometry.Rect((1f - r) / 2f, 0f, (1f + r) / 2f, 1f)
     }
 }
 

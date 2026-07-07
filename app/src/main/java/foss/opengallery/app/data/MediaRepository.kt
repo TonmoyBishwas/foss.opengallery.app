@@ -2,6 +2,7 @@ package foss.opengallery.app.data
 
 import android.content.Context
 import android.database.ContentObserver
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.paging.Pager
@@ -10,10 +11,12 @@ import androidx.paging.PagingData
 import foss.opengallery.app.data.model.Bucket
 import foss.opengallery.app.data.model.MediaItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
@@ -21,7 +24,13 @@ class MediaRepository(private val context: Context) {
 
     private val resolver = context.contentResolver
 
-    /** Emits Unit whenever anything in the media store changes. */
+    /**
+     * Emits whenever anything in the media store changes. Debounced: the
+     * provider fires bursts of notifications (saves, downloads, its own
+     * thumbnail writes) and invalidating pagers per-notification restarts
+     * page loads mid-scroll.
+     */
+    @OptIn(FlowPreview::class)
     val changes: Flow<Unit> = callbackFlow {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
@@ -30,20 +39,20 @@ class MediaRepository(private val context: Context) {
         }
         resolver.registerContentObserver(MediaQuery.filesUri, true, observer)
         awaitClose { resolver.unregisterContentObserver(observer) }
-    }.conflate().flowOn(Dispatchers.IO)
+    }.debounce(700).flowOn(Dispatchers.IO)
 
     /** All photos+videos, newest first. */
     fun timelinePager(): Pair<Pager<Int, MediaItem>, () -> Unit> {
         var current: MediaPagingSource? = null
         val pager = Pager(
             config = PagingConfig(
-                pageSize = 120,
-                initialLoadSize = 240,
-                prefetchDistance = 240,
+                pageSize = PAGE_SIZE,
+                initialLoadSize = PAGE_SIZE * 2,
+                prefetchDistance = PAGE_SIZE * 2,
                 enablePlaceholders = false,
             )
         ) {
-            MediaPagingSource(resolver).also { current = it }
+            MediaPagingSource(resolver, pageSize = PAGE_SIZE).also { current = it }
         }
         return pager to { current?.invalidate() }
     }
@@ -67,16 +76,31 @@ class MediaRepository(private val context: Context) {
     ): Pair<Pager<Int, MediaItem>, () -> Unit> {
         var current: MediaPagingSource? = null
         val pager = Pager(
-            config = PagingConfig(pageSize = 120, initialLoadSize = 240, enablePlaceholders = false)
+            config = PagingConfig(
+                pageSize = PAGE_SIZE,
+                initialLoadSize = PAGE_SIZE * 2,
+                prefetchDistance = PAGE_SIZE * 2,
+                enablePlaceholders = false,
+            )
         ) {
             MediaPagingSource(
                 resolver,
                 selection = selection,
                 selectionArgs = selectionArgs,
                 sortOrder = sortOrder,
+                pageSize = PAGE_SIZE,
             ).also { current = it }
         }
         return pager to { current?.invalidate() }
+    }
+
+    /** Every (id, typed uri) matching a selection — backs "Select all". */
+    suspend fun allUris(
+        selection: String = MediaQuery.MEDIA_TYPE_SELECTION,
+        args: Array<String>? = null,
+        sortOrder: String = MediaQuery.SORT_DATE_ADDED_DESC,
+    ): List<Pair<Long, Uri>> = withContext(Dispatchers.IO) {
+        MediaQuery.queryAllUris(resolver, selection, args, sortOrder)
     }
 
     suspend fun countFor(selection: String, args: Array<String>? = null): Pair<Int, Int> =
@@ -109,5 +133,9 @@ class MediaRepository(private val context: Context) {
 
     suspend fun totalCount(): Int = withContext(Dispatchers.IO) {
         MediaQuery.count(resolver)
+    }
+
+    private companion object {
+        const val PAGE_SIZE = 120
     }
 }

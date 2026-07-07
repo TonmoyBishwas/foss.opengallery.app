@@ -1,5 +1,6 @@
 package foss.opengallery.app.ui.screens.albums
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,16 @@ fun AllAlbumsScreen(
 
     val visibleAlbums = albums.filter { !it.hidden }
 
+    fun folderUp() {
+        folderPath = folderPath.trimEnd('/')
+            .substringBeforeLast('/', "")
+            .let { if (it.isEmpty()) "" else "$it/" }
+    }
+    // System back mirrors the header Back arrow while inside the tree.
+    BackHandler(enabled = mode == AllAlbumsMode.Folders && folderPath.isNotEmpty()) {
+        folderUp()
+    }
+
     Column(Modifier.fillMaxSize().background(OgColors.Background)) {
         CompactHeaderBar(
             title = "All albums",
@@ -65,9 +76,7 @@ fun AllAlbumsScreen(
                 when (action) {
                     HeaderAction.Back -> {
                         if (mode == AllAlbumsMode.Folders && folderPath.isNotEmpty()) {
-                            folderPath = folderPath.trimEnd('/')
-                                .substringBeforeLast('/', "")
-                                .let { if (it.isEmpty()) "" else "$it/" }
+                            folderUp()
                         } else onBack()
                     }
                     HeaderAction.More -> menuOpen = true

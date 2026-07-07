@@ -85,11 +85,19 @@ class SearchViewModel(
     suspend fun queryByIds(ids: List<Long>): List<MediaItem> =
         withContext(Dispatchers.IO) {
             if (ids.isEmpty()) return@withContext emptyList()
-            val placeholders = ids.joinToString(",") { "?" }
-            MediaQuery.queryPage(
-                resolver, offset = 0, limit = ids.size,
-                selection = "${android.provider.MediaStore.MediaColumns._ID} IN ($placeholders)",
-                selectionArgs = ids.map(Long::toString).toTypedArray(),
+            // SQLite caps bound variables (999 on many devices) — chunk.
+            // Each chunk sorts internally, so re-sort the concatenation to
+            // keep the global newest-first order callers render as-is.
+            ids.chunked(900).flatMap { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                MediaQuery.queryPage(
+                    resolver, offset = 0, limit = chunk.size,
+                    selection = "${android.provider.MediaStore.MediaColumns._ID} IN ($placeholders)",
+                    selectionArgs = chunk.map(Long::toString).toTypedArray(),
+                )
+            }.sortedWith(
+                compareByDescending<MediaItem> { it.dateAddedSeconds }
+                    .thenByDescending { it.id }
             )
         }
 

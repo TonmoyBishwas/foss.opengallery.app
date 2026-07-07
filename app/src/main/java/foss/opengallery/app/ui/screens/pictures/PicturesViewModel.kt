@@ -1,5 +1,6 @@
 package foss.opengallery.app.ui.screens.pictures
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -9,14 +10,13 @@ import foss.opengallery.app.data.model.MediaItem
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PicturesViewModel(private val repo: MediaRepository) : ViewModel() {
@@ -31,9 +31,12 @@ class PicturesViewModel(private val repo: MediaRepository) : ViewModel() {
     private val _columns = MutableStateFlow(4)
     val columns: StateFlow<Int> = _columns.asStateFlow()
 
-    /** Multi-select state. */
-    private val _selection = MutableStateFlow<Set<Long>>(emptySet())
-    val selection: StateFlow<Set<Long>> = _selection.asStateFlow()
+    /**
+     * Multi-select state as id → content uri, so share/delete work even for
+     * items selected via "Select all" that paging never loaded.
+     */
+    private val _selection = MutableStateFlow<Map<Long, Uri>>(emptyMap())
+    val selection: StateFlow<Map<Long, Uri>> = _selection.asStateFlow()
     private val _selectionMode = MutableStateFlow(false)
     val selectionMode: StateFlow<Boolean> = _selectionMode.asStateFlow()
 
@@ -77,23 +80,28 @@ class PicturesViewModel(private val repo: MediaRepository) : ViewModel() {
 
     fun enterSelection(initial: MediaItem? = null) {
         _selectionMode.value = true
-        initial?.let { _selection.value = setOf(it.id) }
+        initial?.let { _selection.value = mapOf(it.id to it.uri) }
     }
 
     fun toggleSelected(item: MediaItem) {
         _selection.update { sel ->
-            if (item.id in sel) sel - item.id else sel + item.id
+            if (item.id in sel) sel - item.id else sel + (item.id to item.uri)
         }
     }
 
     fun clearSelection() {
         _selectionMode.value = false
-        _selection.value = emptySet()
+        _selection.value = emptyMap()
     }
 
-    fun selectAll(ids: List<Long>) {
-        _selection.value = ids.toSet()
+    /** Selects the entire library, not just the pages loaded so far. */
+    fun selectAll() {
+        viewModelScope.launch {
+            _selection.value = repo.allUris().toMap()
+        }
     }
+
+    fun selectedUris(): List<Uri> = _selection.value.values.toList()
 
     private companion object {
         const val MIN_COLUMNS = 2

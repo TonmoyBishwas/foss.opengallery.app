@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -61,6 +62,21 @@ fun AlbumsScreen(
                     }
                 },
             )
+            // Anchored outside the lazy grid: the hero item (the old anchor)
+            // is disposed once scrolled away, which made ⋮ dead from the
+            // compact bar. See docs/PITFALLS.md on menu anchoring.
+            Box(Modifier.align(Alignment.End).padding(end = 8.dp)) {
+                OneUiPopupMenu(
+                    expanded = menuOpen,
+                    onDismiss = { menuOpen = false },
+                    entries = listOf(
+                        PopupEntry("Create") { createOpen = true },
+                        PopupEntry("Hide albums") {
+                            onNavigate("hideAlbums")
+                        },
+                    ),
+                )
+            }
             Box(Modifier.fillMaxSize()) {
                 LazyVerticalGrid(
                     state = gridState,
@@ -68,36 +84,23 @@ fun AlbumsScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     item(key = "hero", span = { GridItemSpan(maxLineSpan) }) {
-                        Box {
-                            HeroHeader(
-                                title = "Albums",
-                                heroHeight = 320.dp,
-                                actions = listOf(
-                                    HeaderAction.Plus,
-                                    HeaderAction.Search,
-                                    HeaderAction.More,
-                                ),
-                                onAction = { action ->
-                                    when (action) {
-                                        HeaderAction.Plus -> createOpen = true
-                                        HeaderAction.More -> menuOpen = true
-                                        else -> {}
-                                    }
-                                },
-                            )
-                            Box(Modifier.align(Alignment.BottomEnd)) {
-                                OneUiPopupMenu(
-                                    expanded = menuOpen,
-                                    onDismiss = { menuOpen = false },
-                                    entries = listOf(
-                                        PopupEntry("Create") { createOpen = true },
-                                        PopupEntry("Hide albums") {
-                                            onNavigate("hideAlbums")
-                                        },
-                                    ),
-                                )
-                            }
-                        }
+                        HeroHeader(
+                            title = "Albums",
+                            heroHeight = 320.dp,
+                            actions = listOf(
+                                HeaderAction.Plus,
+                                HeaderAction.Search,
+                                HeaderAction.More,
+                            ),
+                            onAction = { action ->
+                                when (action) {
+                                    HeaderAction.Plus -> createOpen = true
+                                    HeaderAction.Search -> onNavigate("search")
+                                    HeaderAction.More -> menuOpen = true
+                                    else -> {}
+                                }
+                            },
+                        )
                     }
 
                     item(key = "essentialHeader", span = { GridItemSpan(maxLineSpan) }) {
@@ -124,13 +127,13 @@ fun AlbumsScreen(
                         item(key = "customHeader", span = { GridItemSpan(maxLineSpan) }) {
                             AlbumsSectionHeader(title = "My albums")
                         }
-                        items(customs, key = { "c:${it.id}" }) { album ->
+                        items(customs, key = { "c:${it.album.id}" }) { ui ->
                             AlbumCard(
-                                title = album.name,
-                                count = null,
-                                cover = null,
+                                title = ui.album.name,
+                                count = ui.count,
+                                cover = ui.cover,
                                 onClick = {
-                                    onNavigate(Routes.customAlbum(album.id, album.name))
+                                    onNavigate(Routes.customAlbum(ui.album.id, ui.album.name))
                                 },
                             )
                         }

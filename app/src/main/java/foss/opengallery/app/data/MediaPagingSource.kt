@@ -16,11 +16,16 @@ class MediaPagingSource(
     private val selection: String = MediaQuery.MEDIA_TYPE_SELECTION,
     private val selectionArgs: Array<String>? = null,
     private val sortOrder: String = MediaQuery.SORT_DATE_ADDED_DESC,
+    private val pageSize: Int = 120,
 ) : PagingSource<Int, MediaItem>() {
 
     override fun getRefreshKey(state: PagingState<Int, MediaItem>): Int? {
         val anchor = state.anchorPosition ?: return null
-        return (anchor - state.config.initialLoadSize / 2).coerceAtLeast(0)
+        val raw = (anchor - state.config.initialLoadSize / 2).coerceAtLeast(0)
+        // Keys must stay page-aligned: a prepend loads exactly [key - pageSize,
+        // key), so an unaligned refresh key would leave a gap or overlap
+        // (duplicate grid keys) between the refreshed page and its neighbours.
+        return (raw / pageSize) * pageSize
     }
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MediaItem> =
@@ -37,7 +42,7 @@ class MediaPagingSource(
                 )
                 LoadResult.Page(
                     data = items,
-                    prevKey = if (offset == 0) null else (offset - params.loadSize).coerceAtLeast(0),
+                    prevKey = if (offset == 0) null else (offset - pageSize).coerceAtLeast(0),
                     nextKey = if (items.size < params.loadSize) null else offset + items.size,
                 )
             } catch (e: Exception) {

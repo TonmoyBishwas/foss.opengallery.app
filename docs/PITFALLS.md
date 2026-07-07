@@ -46,6 +46,42 @@ write back an absolute — the lambda holds a stale snapshot. Use delta-based up
 through the reducer: `onUpdate { it.copy(straighten = it.straighten + delta) }`
 (this is how the straighten ruler works).
 
+## Data & paging traps (the v1.1.0 perf batch)
+
+### MediaStore queries MUST page in SQL
+`Cursor.moveToPosition(offset)` on an unbounded query walks every skipped row
+through 2 MB cursor windows — O(offset) per page, O(n²) over a scroll session.
+This was the "lags like crazy on big albums" bug. `MediaQuery.queryPage` now
+uses `QUERY_ARG_LIMIT/OFFSET` (30+) or a `LIMIT n OFFSET m` sort suffix
+(26–29). Never query MediaStore without a limit unless you truly need every
+row, and then use a narrow projection.
+
+### Offset paging needs page-aligned keys and a total sort order
+- `getRefreshKey` must return a multiple of `pageSize`, and `prevKey` must
+  step by `pageSize` (not `params.loadSize`, which differs for the initial
+  load) — otherwise a mid-scroll invalidation leaves a gap or an overlap, and
+  overlapping ids crash `LazyVerticalGrid` with duplicate keys.
+- Every sort order must end in `_ID` as a tiebreaker. LIMIT/OFFSET over a
+  sort with ties (name, size, datetaken) is nondeterministic across pages.
+
+### Debounce ContentObserver storms
+MediaStore fires bursts of notifications (saves, downloads, its own thumbnail
+writes). Invalidating pagers per-notification restarts loads mid-scroll.
+`MediaRepository.changes` is debounced 700 ms — route all "refresh on media
+change" logic through it instead of registering new observers.
+
+### Anchors inside lazy items die when scrolled away
+A `DropdownMenu` emitted inside a `LazyVerticalGrid` `item {}` stops existing
+once that item scrolls out of the viewport — the ⋮ menu opened from the
+pinned compact bar silently did nothing. Hoist popup menus out of lazy
+content into the screen `Column` (see the anchoring rule above).
+
+### Selection state must not depend on loaded pages
+"Select all" iterated `LazyPagingItems` — i.e. only the ~240 loaded items.
+Selection is now an id→uri map filled by a dedicated `_ID` projection query
+(`MediaRepository.allUris`). Never derive bulk-action targets from what
+paging happens to have loaded.
+
 ## Build & release traps
 
 - **Java**: system Java is 1.8 → `Unsupported class file major version` style

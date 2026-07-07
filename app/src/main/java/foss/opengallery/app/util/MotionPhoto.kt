@@ -36,13 +36,11 @@ object MotionPhoto {
         return MOTION_PHOTO_FLAG.containsMatchIn(text)
     }
 
-    /** Locates the embedded MP4, reading the whole file at most once. */
+    /** Locates the embedded MP4 without loading the whole file into heap. */
     fun findVideo(resolver: ContentResolver, uri: Uri): VideoSlice? {
-        val bytes = readAll(resolver, uri) ?: return null
-        val size = bytes.size.toLong()
-        val headText = String(
-            bytes, 0, minOf(bytes.size, 160 * 1024), Charsets.ISO_8859_1
-        )
+        val size = fileSize(resolver, uri) ?: return null
+        val head = readHead(resolver, uri, 160 * 1024) ?: return null
+        val headText = String(head, Charsets.ISO_8859_1)
 
         // Google MVIMG: offset counted back from EOF.
         MICRO_VIDEO_OFFSET.find(headText)?.let { m ->
@@ -60,10 +58,11 @@ object MotionPhoto {
                 return VideoSlice(size - videoLen, videoLen)
             }
         }
-        // Samsung marker: MP4 begins right after the marker bytes.
-        val markerAt = indexOf(bytes, SAMSUNG_MARKER)
+        // Samsung marker: MP4 begins right after the marker bytes. Streamed
+        // windowed scan — motion photos can be 100 MB+.
+        val markerAt = findMarker(resolver, uri, SAMSUNG_MARKER)
         if (markerAt >= 0) {
-            val start = markerAt + SAMSUNG_MARKER.size.toLong()
+            val start = markerAt + SAMSUNG_MARKER.size
             if (start < size) return VideoSlice(start, size - start)
         }
         return null
@@ -105,10 +104,43 @@ object MotionPhoto {
             resolver.openInputStream(uri)?.use { it.readNBytesCompat(limit) }
         }.getOrNull()
 
-    private fun readAll(resolver: ContentResolver, uri: Uri): ByteArray? =
+    private fun fileSize(resolver: ContentResolver, uri: Uri): Long? =
         runCatching {
-            resolver.openInputStream(uri)?.use { it.readBytes() }
+            resolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                pfd.statSize.takeIf { it > 0 }
+            }
         }.getOrNull()
+
+    /**
+     * Absolute offset of [needle] in the stream, or -1. Scans in 1 MB
+     * windows with a needle-sized carry so matches across chunk borders
+     * are found; memory stays O(window).
+     */
+    private fun findMarker(resolver: ContentResolver, uri: Uri, needle: ByteArray): Long =
+        runCatching {
+            resolver.openInputStream(uri)?.use { input ->
+                val buf = ByteArray(1 shl 20)
+                val keep = needle.size - 1
+                var carry = ByteArray(0)
+                var base = 0L // absolute offset of carry[0]
+                while (true) {
+                    var read = 0
+                    while (read < buf.size) {
+                        val r = input.read(buf, read, buf.size - read)
+                        if (r <= 0) break
+                        read += r
+                    }
+                    if (read <= 0) break
+                    val hay = carry + buf.copyOfRange(0, read)
+                    val idx = indexOf(hay, needle)
+                    if (idx >= 0) return@use base + idx
+                    base += (hay.size - keep).coerceAtLeast(0)
+                    carry = hay.copyOfRange((hay.size - keep).coerceAtLeast(0), hay.size)
+                    if (read < buf.size) break
+                }
+                -1L
+            } ?: -1L
+        }.getOrDefault(-1L)
 
     private fun java.io.InputStream.readNBytesCompat(limit: Int): ByteArray {
         val buf = ByteArray(limit)

@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -103,15 +104,15 @@ fun AppRoot() {
             )
         }
         composable(
-            route = "story/{ids}",
-            arguments = listOf(navArgument("ids") { type = NavType.StringType }),
+            route = "story/{from}/{to}",
+            arguments = listOf(
+                navArgument("from") { type = NavType.LongType },
+                navArgument("to") { type = NavType.LongType },
+            ),
         ) { backStackEntry ->
-            val ids = backStackEntry.arguments?.getString("ids")
-                ?.split(',')
-                ?.mapNotNull(String::toLongOrNull)
-                ?: emptyList()
             foss.opengallery.app.ui.screens.stories.StoryViewerScreen(
-                itemIds = ids,
+                fromEpochDay = backStackEntry.arguments?.getLong("from") ?: 0L,
+                toEpochDay = backStackEntry.arguments?.getLong("to") ?: 0L,
                 onClose = { nav.popBackStack() },
             )
         }
@@ -197,22 +198,27 @@ private fun HomeTabs(onNavigate: (String) -> Unit) {
             .background(OgColors.Background)
     ) {
         Box(Modifier.weight(1f)) {
-            when (currentTab) {
-                MainTab.Pictures -> PicturesScreen(
-                    onOpenItem = { item ->
-                        onNavigate(Routes.viewer("virtual", "recent", item.id))
-                    },
-                    onOpenSearch = { onNavigate("search") },
-                    onSelectionModeChange = { selectionActive = it },
-                )
-                MainTab.Albums -> AlbumsScreen(
-                    onNavigate = onNavigate,
-                )
-                MainTab.Stories -> foss.opengallery.app.ui.screens.stories.StoriesScreen(
-                    onOpenStory = { story ->
-                        onNavigate("story/${story.itemIds.joinToString(",")}")
-                    },
-                )
+            // Keep each tab's remembered state (grid scroll position etc.)
+            // alive across tab switches instead of resetting every time.
+            val tabStateHolder = rememberSaveableStateHolder()
+            tabStateHolder.SaveableStateProvider(currentTab) {
+                when (currentTab) {
+                    MainTab.Pictures -> PicturesScreen(
+                        onOpenItem = { item ->
+                            onNavigate(Routes.viewer("virtual", "recent", item.id))
+                        },
+                        onOpenSearch = { onNavigate("search") },
+                        onSelectionModeChange = { selectionActive = it },
+                    )
+                    MainTab.Albums -> AlbumsScreen(
+                        onNavigate = onNavigate,
+                    )
+                    MainTab.Stories -> foss.opengallery.app.ui.screens.stories.StoriesScreen(
+                        onOpenStory = { story ->
+                            onNavigate("story/${story.fromEpochDay}/${story.toEpochDay}")
+                        },
+                    )
+                }
             }
         }
         if (!selectionActive) {
